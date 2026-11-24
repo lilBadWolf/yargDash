@@ -1,0 +1,16 @@
+# dependencies / build output
+node_modules/
+dist/
+
+# user data: settings, Guitar Pro files, logs
+data/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# YARG launcher build output
+yarg/build/

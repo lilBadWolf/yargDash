@@ -1,0 +1,30 @@
+{
+  "name": "yargdash",
+  "version": "1.0.0",
+  "description": "A live dashboard for a running YARG game: lyrics with harmonies and a pitch guide, Guitar Pro tabs in time, every part's note lanes, a click for the drummer, and scores, on any phone or screen on the network.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["yarg", "rhythm game", "lyrics", "guitar pro", "dashboard", "vue"],
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "build": "vite build",
+    "dev": "vite",
+    "server": "node server/server.mjs",
+    "restart": "node scripts/start.mjs --restart",
+    "yarg": "sh yarg/start-yarg.sh"
+  },
+  "dependencies": {
+    "@coderline/alphatab": "1.8.4",
+    "uqr": "^0.1.2",
+    "vue": "^3.5.46"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.11",
+    "vite": "^6.4.6",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}
