@@ -4,6 +4,14 @@
   "description": "A live dashboard for a running YARG game: lyrics with harmonies and a pitch guide, Guitar Pro tabs in time, every part's note lanes, a click for the drummer, and scores, on any phone or screen on the network.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lilBadWolf/yargDash.git"
+  },
+  "homepage": "https://github.com/lilBadWolf/yargDash#readme",
+  "bugs": {
+    "url": "https://github.com/lilBadWolf/yargDash/issues"
+  },
   "private": true,
   "engines": {
     "node": ">=18"

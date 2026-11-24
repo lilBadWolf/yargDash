@@ -13,6 +13,14 @@ It doesn't change YARG. It reads the song YARG is playing and the song file itse
 
 yargDash is an independent project, not made by or affiliated with YARG or its developers.
 
+![The Lanes view: guitar, bass and drums highways with the lyric line underneath](docs/screenshots/lanes.png)
+
+| Lyrics with the pitch guide | Tab, lined up with the song |
+|---|---|
+| ![Lyrics view](docs/screenshots/lyrics.png) | ![Tab view](docs/screenshots/tab.png) |
+| **Click for the drummer** | **Performer page on a phone** |
+| ![Click view](docs/screenshots/click.png) | ![Tab performer page on a phone in landscape](docs/screenshots/phone-tab-landscape.png) |
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 18 or later (22.13 or later for scores)
@@ -70,6 +78,8 @@ The header shows **SRV** (the page is connected to the server) and **YARG** (gre
 **Menu music** (macOS/Linux): the song YARG plays in its menus shows too, with its lyrics. They follow the song when yargDash is sure it started from the top: when it follows the previous menu song, or is the first after YARG starts, or when you tap *Follow it*. YARG doesn't report pausing or skipping the menu music, so tap *Stop following* if you do.
 
 **Performer pages** (QR button): `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/<track>` a tab, `#lanes` the lanes, `#click` the click. They're compact on phones, in landscape too. Hold the logo for 1 s to get back to the dashboard.
+
+<img src="docs/screenshots/phone-lyrics.png" alt="Lyrics performer page on a phone" width="260">
 
 ## How it works
 
