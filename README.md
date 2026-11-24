@@ -21,12 +21,13 @@ yargDash is an independent project, not made by or affiliated with YARG or its d
 
 ## Install and run
 
-Download or clone this repository, then in its folder:
-
 ```sh
+git clone https://github.com/lilBadWolf/yargDash.git && cd yargDash
 npm install
 npm start
 ```
+
+No git? Download the ZIP from GitHub (*Code → Download ZIP*), unzip it and run the two `npm` commands in that folder.
 
 `npm start` builds the page if needed and starts the server in the background on port **8900**, then prints the address to open, e.g. `http://192.168.1.116:8900/`. The server keeps running after the terminal closes. Its log is `data/yargdash.log`.
 
