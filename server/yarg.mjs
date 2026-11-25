@@ -240,6 +240,8 @@ function parseMidi(buf) {
     const tr = names.map(byName).find((t) => t?.events.some((e) => e.on && e.note >= 96 && e.note <= 101));
     if (tr) pro[key] = proPart(tr, sec);
   }
+  const keysTr = byName('PART REAL_KEYS_X');
+  if (keysTr) { const k = proKeys(keysTr, sec); if (k.notes.length) pro.keys = k; }
   const onsets = {};
   for (const [key, name] of [['guitar', 'PART GUITAR'], ['bass', 'PART BASS']]) {
     const tr = byName(name);
@@ -280,6 +282,27 @@ function proPart(tr, sec) {
     notes: notes.map((n) => [r3(sec(n.tick)), r3(sec(n.end) - sec(n.tick)), n.s, n.fret, n.flags | (inSpan(hs, n.tick) ? TAB.HAMMER : 0) | (inSpan(ss, n.tick) ? TAB.SLIDE : 0)]),
     chords,
   };
+}
+
+// Rock Band 3 Pro Keys, expert (PART REAL_KEYS_X): notes 48-72 are the keys C3-C5, as MIDI pitches (60 = middle C).
+// Notes 0/2/4/5/7/9 move the 17-key window the player sees so it starts on C3/D3/E3/F3/G3/A3.
+// Notes: [time, duration, pitch, hand (-1: not said), flags]; ranges: [[time, lowest key, highest key]]
+function proKeys(tr, sec) {
+  const open = {}, notes = [], ranges = [];
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  for (const e of tr.events) {
+    if (e.note === undefined) continue;
+    if (e.on && [0, 2, 4, 5, 7, 9].includes(e.note)) { const lo = 48 + e.note; ranges.push([r3(sec(e.tick)), lo, Math.min(72, lo + 16)]); continue; }
+    if (e.note < 48 || e.note > 72) continue;
+    if (e.on) open[e.note] = e.tick;
+    else if (open[e.note] !== undefined) {
+      const on = open[e.note]; delete open[e.note];
+      notes.push([r3(sec(on)), r3(sec(e.tick) - sec(on)), e.note, -1, 0]);
+    }
+  }
+  notes.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  ranges.sort((a, b) => a[0] - b[0]);
+  return { notes, ranges };
 }
 
 // Phrase spans from a vocal track's 105/106 notes (overlapping duet phrases merged).
@@ -690,13 +713,27 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
   let lastLoadAt = -1e9;    // wall time of the last "Loaded N stems" seen in the menus
   let launchFresh = false;  // YARG started since we've been watching: its first menu song is the menu player's
 
+  // lsof writes bytes it thinks unprintable as \xNN, which depends on the locale: with none (the desktop app, opened
+  // from Finder) every non-ASCII byte is escaped, e.g. "AC／DC" comes out as "AC\xef\xbc\x8fDC". Put the bytes back.
+  const unLsof = (s) => {
+    if (!/\\x[0-9a-f]{2}/i.test(s)) return s;
+    const parts = [];
+    let last = 0;
+    for (const m of s.matchAll(/\\x([0-9a-f]{2})/gi)) {
+      parts.push(Buffer.from(s.slice(last, m.index), 'utf8'), Buffer.from([parseInt(m[1], 16)]));
+      last = m.index + m[0].length;
+    }
+    parts.push(Buffer.from(s.slice(last), 'utf8'));
+    return Buffer.concat(parts).toString('utf8');
+  };
+
   function openSongFiles(cb) {
     if (process.platform === 'win32') return cb([]);
     execFile('pgrep', ['-x', 'YARG'], (err, pids) => {
       const pid = !err && pids.trim().split(/\s+/)[0];
       if (!pid) return cb([]);
       execFile('lsof', ['-Fn', '-p', pid], { maxBuffer: 8 << 20 }, (e2, out) => {
-        const files = (out || '').split('\n').filter((l) => l.startsWith('n/')).map((l) => l.slice(1));
+        const files = (out || '').split('\n').filter((l) => l.startsWith('n/')).map((l) => unLsof(l.slice(1)));
         const locs = files.filter((f) => /\.sng$/i.test(f));
         for (const f of files) {
           if (/\.(ogg|opus|mp3|wav|flac)$/i.test(f) && fs.existsSync(path.join(path.dirname(f), 'song.ini'))) locs.push(path.dirname(f));

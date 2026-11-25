@@ -23,6 +23,8 @@ function setClock(c) {
   yarg.clock = c;
   anchor = { t: c.t, at: performance.now() / 1000, rate: c.rate || 1, run: c.state === 'run' };
 }
+// `npm run dev` only: jump the song clock from the browser console to look at any moment, e.g. __yargClock(95)
+if (import.meta.env.DEV) window.__yargClock = (t, run = true) => setClock({ ...yarg.clock, state: run ? 'run' : 'pause', t, rate: 1 });
 
 export function onYargMessage(msg) {
   if (msg.type === 'yarg' || (msg.type === 'snapshot' && msg.yarg)) {
@@ -147,10 +149,20 @@ export const tuningName = (t) => {
 export const removeTab = () => post('/yarg/tab/remove', {});
 // The track this device shows: the URL's (#tab/pro-bass), else this device's choice (by id, then by kind), else the first.
 export function tabTrackId(routeTrack) {
-  const ts = yarg.tabs?.tracks || [];
+  const ts = (yarg.tabs?.tracks || []).filter((t) => t.kind !== 'keys');
   for (const id of [routeTrack, settings.tabTrack]) if (id && ts.some((t) => t.id === id)) return id;
   const kind = settings.tabKind || 'guitar';
   return (ts.find((t) => t.kind === kind) || ts[0])?.id || null;
+}
+
+// ---------- keys ----------
+// Keyboard parts (the chart's Pro Keys, Guitar Pro piano/organ/synth tracks) are tab tracks of kind 'keys'.
+export const keysTracks = () => (yarg.tabs?.tracks || []).filter((t) => t.kind === 'keys');
+// The one this device shows: the URL's (#keys/gp3), else this device's choice, else Pro Keys, else the busiest.
+export function keysTrackId(routeTrack) {
+  const ts = keysTracks();
+  for (const id of [routeTrack, settings.keysTrack]) if (id && ts.some((t) => t.id === id)) return id;
+  return (ts.find((t) => t.source === 'chart') || [...ts].sort((a, b) => b.count - a.count)[0])?.id || null;
 }
 
 export const STAR_LABEL = { 6: 'Gold stars', 7: 'Silver stars', 8: 'Brutal' };

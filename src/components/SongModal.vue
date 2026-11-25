@@ -148,8 +148,8 @@ const facts = computed(() => [
               </ul>
               <div class="tracks">
                 <div v-for="t in gpTracks" :key="t.id" class="trk">
-                  <InstIcon :name="t.kind === 'bass' ? 'bass' : 'guitar'" /><span class="tn">{{ t.name }}</span>
-                  <span class="muted">{{ t.strings }}-string · {{ tuningName(t.tuning) }} · {{ t.count.toLocaleString() }} notes</span>
+                  <InstIcon :name="t.kind" /><span class="tn">{{ t.name }}</span>
+                  <span class="muted">{{ t.kind === 'keys' ? 'keyboard' : `${t.strings}-string · ${tuningName(t.tuning)}` }} · {{ t.count.toLocaleString() }} notes</span>
                 </div>
               </div>
             </template>
@@ -159,8 +159,8 @@ const facts = computed(() => [
             <div class="fname">From the chart</div>
             <div class="tracks">
               <div v-for="t in proTracks" :key="t.id" class="trk">
-                <InstIcon :name="t.kind === 'bass' ? 'bass' : 'guitar'" /><span class="tn">{{ t.name }}</span>
-                <span class="muted">{{ tuningName(t.tuning) }}{{ t.tuningFrom === 'assumed' ? ' (assumed)' : '' }} · {{ t.count.toLocaleString() }} notes</span>
+                <InstIcon :name="t.kind" /><span class="tn">{{ t.name }}</span>
+                <span class="muted">{{ t.kind === 'keys' ? 'keyboard' : `${tuningName(t.tuning)}${t.tuningFrom === 'assumed' ? ' (assumed)' : ''}` }} · {{ t.count.toLocaleString() }} notes</span>
               </div>
             </div>
           </div>

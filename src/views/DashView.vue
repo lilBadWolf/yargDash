@@ -1,19 +1,22 @@
 <script setup>
 // The dashboard: what YARG is playing, where we are in it (time, section, tempo, beat), the lyrics (any vocal part,
 // with a pitch guide), Guitar Pro / Pro Guitar tabs, every part's note lanes, a click for the drummer, and scores.
-// Performer pages without controls (QR button): #stage[/harm1|harm2|harm3], #tab[/<track>], #lanes, #click.
+// Performer pages without controls (QR button): #stage[/harm1|harm2|harm3], #tab[/<track>], #lanes, #keys[/<track>], #click.
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import LyricsPanel from '../components/LyricsPanel.vue';
 import PitchGuide from '../components/PitchGuide.vue';
 import ClickPanel from '../components/ClickPanel.vue';
 import TabPanel from '../components/TabPanel.vue';
 import LanesPanel from '../components/LanesPanel.vue';
+import KeysPanel from '../components/KeysPanel.vue';
+import SegPick from '../components/SegPick.vue';
 import StartYarg from '../components/StartYarg.vue';
 import { conn } from '../lib/conn.js';
-import { yarg, songTime, synced, fmtTime, partKeys, partKey, PART_LABELS, sectionIndexAt, STAR_LABEL, shownSong, confirmMenu, tabTrackId, uploadTab, findTab, setTabOffset, removeTab, setTabTuning, TUNINGS, tuningName, tuningNotes } from '../lib/yarg.js';
+import { yarg, songTime, synced, fmtTime, partKeys, partKey, PART_LABELS, sectionIndexAt, STAR_LABEL, shownSong, confirmMenu, tabTrackId, keysTracks, keysTrackId, uploadTab, findTab, setTabOffset, removeTab, setTabTuning, TUNINGS, tuningName, tuningNotes } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 import { route } from '../lib/router.js';
 import { openModal } from '../lib/modal.js';
+import { fitRow } from '../lib/fit.js';
 
 const stage = computed(() => route.artist);
 const mode = computed(() => route.mode || settings.mode);
@@ -64,19 +67,36 @@ const ago = (ms) => {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(ms).toLocaleDateString();
 };
 
+// the controls row: its pickers turn into dropdowns when they'd wrap it (the track picker first, then the views)
+const VIEWS = [{ value: 'lyrics', label: 'Lyrics' }, { value: 'tab', label: 'Tab' }, { value: 'lanes', label: 'Lanes' }, { value: 'keys', label: 'Keys' }, { value: 'click', label: 'Click' }];
+const row = ref(null), trackPick = ref(null), viewPick = ref(null);
+const compact = fitRow(row, () => [['track', trackPick.value], ['view', viewPick.value]]);
+const opts = (ts) => ts.map((t) => ({ value: t.id, label: t.name, title: `${t.count} notes` }));
+
 const zoom = (d) => {
   const key = mode.value === 'tab' ? 'tabScale' : 'lyricsScale';
   settings[key] = Math.min(2.2, Math.max(0.6, Math.round(((settings[key] || 1) + d) * 10) / 10));
 };
 
 // ---------- tabs ----------
-const tabTracks = computed(() => yarg.tabs?.tracks || []);
+const tabTracks = computed(() => (yarg.tabs?.tracks || []).filter((t) => t.kind !== 'keys'));
 const tabId = computed(() => tabTrackId(route.tabTrack));
 const tabTrack = computed(() => tabTracks.value.find((t) => t.id === tabId.value) || null);
 function pickTab(t) {
   if (route.tabTrack) { location.hash = `#tab/${t.id}`; return; }
   settings.tabTrack = t.id; settings.tabKind = t.kind;
 }
+// keys: the keyboard part this device shows
+const keyTracks = computed(() => keysTracks());
+const keysId = computed(() => keysTrackId(route.tabTrack));
+const keysTrack = computed(() => keyTracks.value.find((t) => t.id === keysId.value) || null);
+function pickKeys(t) {
+  if (route.tabTrack) { location.hash = `#keys/${t.id}`; return; }
+  settings.keysTrack = t.id;
+}
+const keysSpeed = (d) => { settings.keysSpeed = Math.round(Math.min(3, Math.max(0.4, (settings.keysSpeed || 1) + d)) * 10) / 10; };
+// the Guitar Pro track whose placement the bar offset controls (tab or keys)
+const gpShown = computed(() => (mode.value === 'tab' ? tabTrack.value : mode.value === 'keys' ? keysTrack.value : null)?.source === 'gp');
 const fileInput = ref(null);
 const tabMsg = ref('');
 async function onTabFile(e) {
@@ -114,6 +134,7 @@ function pickTuning(v) { if (tabTrack.value) setTabTuning(tabTrack.value.id, v ?
 function dropTab() { if (confirm(`Remove ${yarg.tabs?.file} from this song?`)) removeTab(); }
 function share() {
   if (mode.value === 'tab' && tabTrack.value) openModal('qr', { hash: `#tab/${tabTrack.value.id}`, title: `Tab · ${tabTrack.value.name}`, what: `Opens the ${tabTrack.value.kind} tab for whatever YARG is playing, in time, with no other controls.` });
+  else if (mode.value === 'keys' && keysTrack.value) openModal('qr', { hash: `#keys/${keysTrack.value.id}`, title: `Keys · ${keysTrack.value.name}`, what: 'The keyboard part for whatever YARG is playing, falling onto piano keys in time, with no other controls.' });
   else if (mode.value === 'lanes') openModal('qr', { hash: '#lanes', title: 'Lanes', what: 'Every part\'s notes (guitar, bass, drums, keys) for whatever YARG is playing, with the lyrics: for a screen facing the audience.' });
   else if (mode.value === 'click') openModal('qr', { hash: '#click', title: 'Click', what: 'A big beat counter for the drummer, following the song YARG is playing.' });
   else {
@@ -168,6 +189,10 @@ function share() {
           <button aria-label="Slower notes" title="Slower notes" @click="laneSpeed(-0.1)">🐢</button>
           <button aria-label="Faster notes" title="Faster notes" @click="laneSpeed(0.1)">🐇</button>
         </template>
+        <template v-if="mode === 'keys'">
+          <button aria-label="Slower notes" title="Slower notes" @click="keysSpeed(-0.1)">🐢</button>
+          <button aria-label="Faster notes" title="Faster notes" @click="keysSpeed(0.1)">🐇</button>
+        </template>
         <button v-if="!stage" class="qr" title="Open on a performer's phone" @click="share">
           <svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm11-2h2v2h-2zm-3 0h2v4h-2zm3 3h5v2h-5zm3-3h2v2h-2zm-6 5h2v3h-2zm3 1h2v2h-2zm3 0h2v2h-2z" /></svg>
         </button>
@@ -175,29 +200,26 @@ function share() {
     </div>
 
     <!-- mode / part / pitch / tab controls -->
-    <div v-if="cur || !stage" class="bar2">
-      <div v-if="!route.mode" class="seg">
-        <button :class="{ on: mode === 'lyrics' }" @click="settings.mode = 'lyrics'">Lyrics</button>
-        <button :class="{ on: mode === 'tab' }" @click="settings.mode = 'tab'">Tab</button>
-        <button :class="{ on: mode === 'lanes' }" @click="settings.mode = 'lanes'">Lanes</button>
-        <button :class="{ on: mode === 'click' }" @click="settings.mode = 'click'">Click</button>
-      </div>
+    <div v-if="cur || !stage" ref="row" class="bar2">
+      <SegPick v-if="!route.mode" ref="viewPick" :options="VIEWS" :model-value="mode" :compact="compact.view" label="View" @update:model-value="settings.mode = $event" />
       <template v-if="mode === 'lyrics' && cur">
-        <div v-if="parts.length > 1" class="seg parts">
-          <button v-for="k in parts" :key="k" :class="{ on: part === k }" @click="pickPart(k)">{{ PART_LABELS[k] }}</button>
-        </div>
+        <SegPick v-if="parts.length > 1" ref="trackPick" :options="parts.map((k) => ({ value: k, label: PART_LABELS[k] }))" :model-value="part" :compact="compact.track" label="Part" @update:model-value="pickPart" />
         <button v-if="hasNotes" class="chip" :class="{ on: settings.pitchGuide }" @click="settings.pitchGuide = !settings.pitchGuide">Pitch</button>
       </template>
       <div v-if="mode === 'lanes' && cur && !stage && laneParts.length > 1" class="seg parts" title="Parts shown on this device">
         <button v-for="k in laneParts" :key="k" :class="{ on: !settings.lanesHidden.includes(k) }" @click="toggleLane(k)">{{ LANE_LABEL[k] }}</button>
       </div>
-      <template v-if="mode === 'tab' && cur">
-        <div v-if="tabTracks.length > 1" class="seg parts">
-          <button v-for="t in tabTracks" :key="t.id" :class="{ on: tabId === t.id }" :title="`${t.count} notes`" @click="pickTab(t)">{{ t.name }}</button>
-        </div>
-        <span v-if="stage && tabTrack" class="tuning ro">{{ tuningName(tabTrack.tuning) }} · {{ tuningNotes(tabTrack.tuning) }}</span>
+      <template v-if="mode === 'keys' && cur">
+        <SegPick v-if="keyTracks.length > 1" ref="trackPick" :options="opts(keyTracks)" :model-value="keysId" :compact="compact.track" label="Part" @update:model-value="(id) => pickKeys(keyTracks.find((t) => t.id === id))" />
+        <button v-if="keysTrack" class="chip" :class="{ on: settings.keysNames }" title="Note names on the notes and keys" @click="settings.keysNames = !settings.keysNames">Names</button>
+      </template>
+      <template v-if="(mode === 'tab' || mode === 'keys') && cur">
+        <template v-if="mode === 'tab'">
+          <SegPick v-if="tabTracks.length > 1" ref="trackPick" :options="opts(tabTracks)" :model-value="tabId" :compact="compact.track" label="Track" @update:model-value="(id) => pickTab(tabTracks.find((t) => t.id === id))" />
+          <span v-if="stage && tabTrack" class="tuning ro">{{ tuningName(tabTrack.tuning) }} · {{ tuningNotes(tabTrack.tuning) }}</span>
+        </template>
         <template v-if="!stage">
-          <span v-if="yarg.tabs?.file && tabTrack?.source === 'gp'" class="offset" title="Which bar of the song the tab's first bar lines up with: « » move a bar, ‹ › a beat">
+          <span v-if="yarg.tabs?.file && gpShown" class="offset" title="Which bar of the song the tab's first bar lines up with: « » move a bar, ‹ › a beat">
             Bar offset
             <button aria-label="A bar earlier" title="A bar earlier" @click="shiftTab(-1)">«</button><button aria-label="A beat earlier" title="A beat earlier" @click="shiftTab(-tabBeat)">‹</button><b>{{ fmtBars(yarg.tabs.offset) }}</b><button aria-label="A beat later" title="A beat later" @click="shiftTab(tabBeat)">›</button><button aria-label="A bar later" title="A bar later" @click="shiftTab(1)">»</button>
             <button class="autob" :class="{ on: yarg.tabs.auto }" @click="setTabOffset(null)">Auto{{ yarg.tabs.auto ? '' : ` (${fmtBars(yarg.tabs.autoOffset)})` }}</button>
@@ -205,7 +227,7 @@ function share() {
             <span v-if="yarg.tabs.changes?.length" class="ratio" :title="'Sections placed differently from the tab to follow the recording'">{{ yarg.tabs.changes.map((c) => `${c.name} ${c.shift === null ? 'left out' : `${c.shift > 0 ? '+' : ''}${c.shift} bars`}`).join(' · ') }}</span>
             <span v-if="yarg.tabs.ratio && yarg.tabs.ratio !== 1" class="ratio" title="The tab counts bars differently from the chart">{{ yarg.tabs.ratio < 1 ? `${Math.round(1 / yarg.tabs.ratio)} tab bars = 1 song bar` : `1 tab bar = ${yarg.tabs.ratio} song bars` }}</span>
           </span>
-          <label v-if="tabTrack" class="tuning" :class="{ assumed: tabTrack.tuningFrom === 'assumed' }"
+          <label v-if="mode === 'tab' && tabTrack" class="tuning" :class="{ assumed: tabTrack.tuningFrom === 'assumed' }"
             :title="tabTrack.tuningFrom === 'assumed' ? 'The chart doesn\'t say how this part is tuned: pick the tuning (saved for this song)' : `Tuning: ${tuningNotes(tabTrack.tuning)}`">
             Tuning
             <select :value="tuningValue" @change="pickTuning($event.target.value)">
@@ -214,15 +236,15 @@ function share() {
             </select>
           </label>
           <template v-if="yarg.local">
-            <button v-if="yarg.tabs?.file" class="chip" :title="`Replace ${yarg.tabs.file}`" @click="fileInput.click()">Replace file</button>
-            <button v-if="yarg.tabs?.file" class="chip" title="Remove the Guitar Pro file from this song" @click="dropTab">✕</button>
+            <button v-if="yarg.tabs?.file && (mode === 'tab' || gpShown)" class="chip" :title="`Replace ${yarg.tabs.file}`" @click="fileInput.click()">Replace file</button>
+            <button v-if="yarg.tabs?.file && (mode === 'tab' || gpShown)" class="chip" title="Remove the Guitar Pro file from this song" @click="dropTab">✕</button>
             <input ref="fileInput" type="file" accept=".gp,.gpx,.gp5,.gp4,.gp3" hidden @change="onTabFile" />
           </template>
         </template>
       </template>
     </div>
 
-    <div v-if="tabMsg || (mode === 'tab' && yarg.tabs?.error)" class="hint">{{ tabMsg || yarg.tabs.error }}</div>
+    <div v-if="tabMsg || ((mode === 'tab' || mode === 'keys') && yarg.tabs?.error)" class="hint">{{ tabMsg || yarg.tabs.error }}</div>
     <div v-if="showStreamHint" class="hint">
       <template v-if="yarg.streamBlocked && conn.platform === 'darwin'">
         Lyrics aren't following the song: YARG is trying to send its data stream, but macOS is blocking it. Restart YARG with yargDash's fix.
@@ -239,6 +261,17 @@ function share() {
       <template v-if="cur && yarg.lyrics">
         <ClickPanel v-if="mode === 'click'" />
         <LanesPanel v-else-if="mode === 'lanes'" ref="lanesRef" />
+        <template v-else-if="mode === 'keys'">
+          <KeysPanel v-if="keysTrack" :key="keysTrack.id" :track-id="keysTrack.id" />
+          <div v-else class="empty">
+            <p>No keyboard part for this song.</p>
+            <p class="small">Songs with Pro Keys in the chart have one automatically. So does a Guitar Pro file with a piano, organ or synth part{{ stage || !yarg.local ? ' (added on the YARG computer)' : '' }}: it lines up with the song by itself.</p>
+            <div v-if="!stage && yarg.local" class="find">
+              <button class="chip on" title="Search Ultimate Guitar for this song's Guitar Pro tabs; a file you download is added by itself" @click="onFindTab">Find tab</button>
+              <button class="chip" @click="fileInput.click()">+ Guitar Pro file</button>
+            </div>
+          </div>
+        </template>
         <template v-else-if="mode === 'tab'">
           <TabPanel v-if="tabTrack" :key="tabTrack.id" :track-id="tabTrack.id" />
           <div v-else class="empty">

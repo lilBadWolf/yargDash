@@ -10,7 +10,10 @@ import InstIcon from '../components/InstIcon.vue';
 const INST = Object.fromEntries(INSTRUMENTS.map((i) => [i.key, i]));
 const PRO_OF = { guitar: 'proGuitar', bass: 'proBass', drums: 'proDrums', keys: 'proKeys', vocals: 'harmonies' };
 const FILTERS = [
-  ['all', 'All'], ['tab', 'Has tab'], ['notab', 'Needs a tab'], ['pro', 'Pro parts'], ['harmonies', 'Harmonies'], ['keys', 'Keys'], ['played', 'Played'], ['unplayed', 'Never played'],
+  ['all', 'All'], ['tab', 'Has tab'], ['notab', 'Needs a tab'],
+  ['proGuitar', 'Pro Guitar'], ['proBass', 'Pro Bass'], ['proKeys', 'Pro Keys'], // in the chart
+  ['keys', 'Keys'],                                                              // a Guitar Pro keyboard part (the Keys view)
+  ['played', 'Played'], ['unplayed', 'Never played'],
 ];
 const SORTS = [['artist', 'Artist'], ['title', 'Title'], ['added', 'Recently added'], ['played', 'Most played'], ['year', 'Year'], ['length', 'Length']];
 
@@ -23,12 +26,14 @@ const keep = {
   all: () => true,
   tab: (s) => !!s.tab,
   notab: (s) => !s.tab,
-  pro: (s) => ['proGuitar', 'proBass', 'proDrums', 'proKeys'].some((k) => s.parts[k] != null),
-  harmonies: (s) => s.parts.harmonies != null,
-  keys: (s) => s.parts.keys != null || s.parts.proKeys != null,
+  proGuitar: (s) => s.parts.proGuitar != null,
+  proBass: (s) => s.parts.proBass != null,
+  proKeys: (s) => s.parts.proKeys != null,
+  keys: (s) => !!s.keysTab,
   played: (s) => s.plays > 0,
   unplayed: (s) => !s.plays,
 };
+if (!keep[settings.libFilter]) settings.libFilter = 'all'; // a filter that's gone (Pro parts, Harmonies)
 const by = {
   artist: null, // the server's order
   title: (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
@@ -134,6 +139,7 @@ watch(() => library.version, () => loadLibrary());
           <div class="tab">
             <span v-if="s.tab === 'gp'" class="badge gp" title="Has a Guitar Pro tab">TAB</span>
             <span v-else-if="s.tab === 'pro'" class="badge pro" title="The chart has Pro Guitar/Bass: a tab comes with it">PRO</span>
+            <span v-if="s.keysTab" class="badge keys" title="Its Guitar Pro file has a keyboard part: it shows in the Keys view">KEYS</span>
           </div>
           <div class="best">
             <template v-if="s.plays"><span class="stars">{{ starStr(s.stars) }}</span><small>{{ s.plays }} play{{ s.plays === 1 ? '' : 's' }}</small></template>
@@ -188,6 +194,8 @@ watch(() => library.version, () => loadLibrary());
 .badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 3px 7px; border-radius: 6px; }
 .badge.gp { background: #10291c; color: var(--ok); }
 .badge.pro { background: #0f2a2a; color: var(--accent); }
+.badge.keys { background: #2a2410; color: #f2d02c; }
+.tab { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .best { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 .stars { color: var(--solo); font-size: 12px; letter-spacing: 1px; }
 .best small { color: var(--muted); font-size: 11px; }

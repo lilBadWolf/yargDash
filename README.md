@@ -9,6 +9,7 @@ A live dashboard for a running [YARG](https://yarg.in) game. Run it on the compu
 - 🎤 **Lyrics** that follow the song, with every harmony part and a pitch guide
 - 🎸 **Tabs**: guitar and bass tablature in time, from the chart's Pro Guitar/Bass or a Guitar Pro file that lines itself up with the song
 - 🛣️ **Lanes**: every part's note highway side by side, made for a screen facing the audience
+- 🎹 **Keys**: the keyboard part falling onto piano keys, from the chart's Pro Keys or a Guitar Pro file's piano, organ or synth
 - 🥁 **Click**: a big beat counter for the drummer
 - 🏆 **Scores**: the band's result after each song, and your best during it
 - 📚 **Library**: browse and search every song, see what's in it and whether its tab lines up
@@ -104,7 +105,7 @@ Windows installers have to be built on Windows: the installer tool doesn't run o
 
 ## 🎶 Using it
 
-The header shows **SRV** (the page is connected to the server) and **YARG** (green: running with the data stream on; yellow: running without it). The dashboard has four views. **Library** lists YARG's songs and **Settings** shows what's connected and walks you through setting up YARG.
+The header shows **SRV** (the page is connected to the server) and **YARG** (green: running with the data stream on; yellow: running without it). The dashboard has five views. **Library** lists YARG's songs and **Settings** shows what's connected and walks you through setting up YARG.
 
 ### 🎤 Lyrics
 
@@ -122,6 +123,12 @@ Guitar and bass tablature in time, laid out in bars like a printed tab, with a c
 
 Every part of the song as a note highway, side by side (guitar, rhythm, bass, drums and keys at Expert, whichever the chart has), whether or not anyone is playing it in YARG, with the line being sung underneath. Shows hammer-ons and taps, open notes, sustains, star power, solos, and cymbals vs toms on pro drums. Pick which parts each device shows. 🐢 / 🐇 set the note speed.
 
+### 🎹 Keys
+
+The keyboard part falling onto piano keys in time with the song. Each key lights up while its note sounds: right hand teal, left hand purple. The keyboard spans the part's range, with note names on the notes and keys (**Names**) and the chord name when the file has one. 🐢 / 🐇 set the note speed.
+- Songs whose chart has **Pro Keys** (Rock Band 3 songs) have it automatically, with the 17-key window Rock Band shows the player marked as it moves. Rock Band fits Pro Keys into two octaves, so it can sit an octave or more away from the real part.
+- A Guitar Pro file's keyboard parts (piano, organ, synth, clavinet…) show here instead of in the Tab view, lined up with the song the same way as its tabs (and nudged by the same **Bar offset**). Newer `.gp`/`.gpx` files mark keyboards clearly, and their grand staff gives the two hands. In older formats every part has strings, so the instrument sound and track name decide. A part named for a voice, guitar, bass or harmonica stays a tab.
+
 ### 🥁 Click
 
 For the drummer: the beat in the bar (bar 1 highlighted), bar number and bars until the next section, timed from the chart. *Click sound* adds an audible click on that device.
@@ -132,7 +139,7 @@ After a song, the band score, stars and each player's result (from YARG's own sc
 
 ### 📚 Library
 
-Every song in the folders YARG reads (YARG's *Settings → Songs*), with album art. Search by title, artist, album, genre or year (press `/` to jump to the search box), filter (*Has tab*, *Needs a tab*, *Pro parts*, *Harmonies*, *Keys*, *Played*…) and sort. Each row shows the song's instruments (a dot marks a Pro part), whether it has a tab, and your best stars. Tap a song to see:
+Every song in the folders YARG reads (YARG's *Settings → Songs*), with album art. Search by title, artist, album, genre or year (press `/` to jump to the search box), filter (*Has tab*, *Needs a tab*, *Pro Guitar*, *Pro Bass* and *Pro Keys* in the chart, *Keys* for a Guitar Pro keyboard part, *Played*…) and sort. Each row shows the song's instruments (a dot marks a Pro part), whether it has a tab, and your best stars. Tap a song to see:
 - its instruments with YARG's difficulty and note counts, vocal and harmony parts, sections and tempo
 - its tab: the chart's Pro Guitar/Bass, or its Guitar Pro file and **how well that lines up** with the song (and what was adjusted). **Find tab** (on the YARG computer), **+ Guitar Pro file** and **Remove** work here without playing the song, and a downloaded tab is added to it by itself.
 - the band's best score for it
@@ -145,7 +152,7 @@ The song YARG plays in its menus shows too, with its lyrics. They follow the son
 
 ### 📱 Performer pages
 
-The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/<track>` a tab, `#lanes` the lanes, `#click` the click. They're compact on phones, in landscape too. Hold the logo for 1 s to get back to the dashboard.
+The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/<track>` a tab, `#lanes` the lanes, `#keys/<track>` the keys, `#click` the click. They're compact on phones, in landscape too. Hold the logo for 1 s to get back to the dashboard.
 
 <img src="docs/screenshots/phone-lyrics.png" alt="Lyrics performer page on a phone" width="260">
 

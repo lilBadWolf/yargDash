@@ -130,7 +130,10 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
         songs: songs.map((e, i) => {
           const st = stats[`${e.name}\n${e.artist}`];
           const { location, size, loading, ...rest } = e;
+          // keysTab: its Guitar Pro file has a keyboard part (null: the file hasn't been read yet)
+          const kinds = files[i] ? tabs.kindsOf(files[i]) : [];
           return { ...rest, file: path.basename(location), tab: files[i] ? 'gp' : e.parts.proGuitar != null || e.parts.proBass != null ? 'pro' : null,
+            keysTab: kinds ? kinds.includes('keys') : null,
             plays: st?.plays || 0, stars: st?.stars || 0, score: st?.score || 0 };
         }).sort((a, b) => a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
       };

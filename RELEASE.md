@@ -1,35 +1,38 @@
-## 🎉 yargDash is now a desktop app!
+## 🎹 yargDash 1.2.0: Keys!
 
-Install it, open it, and the dashboard is live on this computer and on every phone on your network 📱✨ You no longer need Node.js or a terminal.
+A new view for the keyboard player: the song's keyboard part falls onto piano keys in time with the song, Synthesia-style ✨
 
 ### 🆕 What's new
 
-- 🖥️ **Desktop app** for macOS, Windows and Linux. Closing the window leaves it running in the menu bar or tray, so phones stay connected. That menu shows the address for phones and has *Start YARG* (macOS), *Open at login* and *Restart server*.
-- 📚 **Library**: browse and search every song in YARG's song folders, with album art 🖼️. Filter by songs with or without a tab, Pro parts, harmonies and more.
-- 🔎 **Song details**: tap a song to see its instruments and difficulty 🎸🥁🎹🎤, vocal parts, sections and your best score 🏆. It also shows its tab and **how well the tab lines up** 🎯. *Find tab*, adding a Guitar Pro file and removing one all work without playing the song.
-- ▶️ **Start YARG** (macOS): if your Mac blocks YARG's data stream, yargDash notices and offers to restart YARG with its fix, from *Settings*, the dashboard or the menu bar. Otherwise, just start YARG as usual.
-- 🎛️ **Settings** redesigned: a checklist for setting up YARG ✅, the song folders, and a QR code for phones.
-- 🎨 New look: the lane icon is the app's logo everywhere.
-- 🔄 **Updates**: on Windows and Linux (AppImage) the app updates itself. On macOS it tells you when a new version is out.
+- 🎹 **Keys view**: notes fall onto the keys that play them, and each key lights up while its note sounds (right hand teal, left hand purple). The keyboard spans the part's range, with note names on the notes and keys and the chord name when there is one. 🐢 / 🐇 set the speed, and the QR button opens it on a tablet on the keyboard stand 📱
+  - Songs whose chart has **Pro Keys** have it automatically, with Rock Band's 17-key window marked as it moves.
+  - **Guitar Pro files**: their piano, organ and synth parts show here, lined up with the song like the tabs. One file can give you several (Rosanna: piano, two organs, synths 🎶).
+- 🎸 **Tabs**: keyboard parts no longer show up as nonsense guitar tab. Anything tabbed on 4 or 5 strings is a bass tab, even a synth bass (it shows in Keys too).
+- 📚 **Library filters**: *Pro Guitar*, *Pro Bass* and *Pro Keys* (in the chart) replace *Pro parts*, and *Keys* finds songs whose Guitar Pro file has a keyboard part. Those songs get a **KEYS** badge.
+- 📏 **Tidier controls**: when the view and track buttons don't fit on one line (phones, songs with lots of tracks), they turn into dropdowns.
+
+### 🛠️ Fixes
+
+- 💥 A Guitar Pro file whose repeats confuse the file reader could freeze yargDash and crash it over and over. Now that file just plays without its repeats.
+- 🤘 Songs whose names have special characters (like YARG's `AC／DC` folders) weren't recognised in the menu on macOS, so their tabs weren't picked up.
+- 🔎 A downloaded tab is matched more often: "Runnin'" and "Running" count as the same title, and when the title inside the file has a typo, the file name is used.
 
 ### ⬇️ Download
 
 | | |
 |---|---|
-| 🍎 macOS, Apple Silicon | `yargDash-1.1.0-mac-arm64.dmg` |
-| 🍏 macOS, Intel | `yargDash-1.1.0-mac-x64.dmg` |
-| 🪟 Windows | `yargDash-Setup-1.1.0.exe` |
+| 🍎 macOS, Apple Silicon | `yargDash-1.2.0-mac-arm64.dmg` |
+| 🍏 macOS, Intel | `yargDash-1.2.0-mac-x64.dmg` |
+| 🪟 Windows | `yargDash-Setup-1.2.0.exe` |
 | 🐧 Linux | `.AppImage` (updates itself) or `.deb` |
+
+Windows and Linux (AppImage) update themselves. On macOS, install the new version over the old one; your tabs and settings stay.
 
 ### 🔐 First launch
 
 The app isn't signed by Apple or Microsoft, so the first launch needs one extra step:
 
-- 🍎 **macOS**: open the app; when macOS refuses, go to *System Settings → Privacy & Security* and click **Open Anyway**. If macOS says the app is damaged, run `xattr -cr /Applications/yargDash.app` in Terminal and open it again. Allow incoming connections and local network access when asked 📶: that's how phones reach it and how it hears YARG. If YARG still shows yellow, turn on **yargDash** in *Privacy & Security → Local Network*, or tick *Send YARG's stream to this Mac only* in Settings.
+- 🍎 **macOS**: open the app; when macOS refuses, go to *System Settings → Privacy & Security* and click **Open Anyway**. If macOS says the app is damaged, run `xattr -cr /Applications/yargDash.app` in Terminal and open it again. Allow incoming connections and local network access when asked 📶.
 - 🪟 **Windows**: if SmartScreen warns about an unknown publisher, click *More info → Run anyway*. Allow it through the firewall on private networks.
-
-### 📦 Coming from `npm start`?
-
-Your tabs are in its `data/` folder. To use them in the app, copy `data/tabs/` and `data/config.json` into the app's data folder (its menu → *Show data folder*) while the app is closed.
 
 Rock on 🤘

@@ -10,7 +10,7 @@ export const library = reactive({
   scanning: false,
   scannedAt: 0,
   folders: [],
-  songs: [],         // [{ id, name, artist, album, genre, year, charter, length, parts: {key: tier}, tab: 'gp'|'pro'|null, plays, stars, score, mtime, file }]
+  songs: [],         // [{ id, name, artist, album, genre, year, charter, length, parts: {key: tier}, tab: 'gp'|'pro'|null, keysTab: bool|null, plays, stars, score, mtime, file }]
 });
 
 export async function loadLibrary(force = false) {

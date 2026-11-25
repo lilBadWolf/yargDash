@@ -22,6 +22,8 @@
 //    timing alone can't tell repeated choruses apart. A single offset can still be set by hand.
 //
 // Track data sent to pages: { id, name, kind, strings, tuning (MIDI, low → high), notes: [[t, dur, string (0 = lowest), fret, flags]], chords: [[t, name]] }
+// Keyboard parts (kind 'keys': the chart's Pro Keys, or a Guitar Pro piano/organ/synth track, see isKeys()) go to the
+// Keys view instead: notes: [[t, dur, MIDI pitch, hand (0 right, 1 left, -1 not said), flags]], and Pro Keys' ranges.
 import fs from 'node:fs';
 import path from 'node:path';
 import { TAB } from './yarg.mjs';
@@ -32,6 +34,30 @@ const RATIOS = [1 / 4, 1 / 3, 1 / 2, 2 / 3, 1, 3 / 2, 2, 3, 4]; // chart bars pe
 const STEPS = 12;                                       // offsets within a bar: twelfths (quarters and thirds)
 const NEAR = 0.07;                                      // seconds: a tab note this close to a chart note matches it
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : 0; };
+
+// Is this Guitar Pro track a keyboard part (piano, organ, synth…)? Newer files (.gp/.gpx) write keyboards as
+// staves with no strings; older ones (.gp5/.gp4/.gp3) give every track strings, so there only the instrument
+// sound and the name tell. Tab-makers often give vocal lines a synth sound, and leave program 0 (piano) on
+// anything, so a name that says otherwise wins, and program 0 alone isn't enough.
+const KEYS_NAME = /piano|keys|keyboard|organ|synth|clav|rhodes|wurli|harpsi|mellotron|hammond|moog|celest|e\.?\s?piano|\bpad\b|\bep\b/i;
+const NOT_KEYS = /vocal|voice|vox|sing|choir|guitar|gtr|bass|harmonica|drum|perc|sax|trumpet|horn|violin|cello|flute|banjo|mandolin|ukulele/i;
+function isKeys(t) {
+  const staves = t.staves.filter((s) => !s.isPercussion);
+  if (!staves.length) return false;
+  const name = t.name || '';
+  if (KEYS_NAME.test(name)) return true;
+  if (NOT_KEYS.test(name)) return false;
+  if (!staves.some((s) => s.tuning?.length)) return true;            // a stave with no strings: written for keyboard
+  const p = t.playbackInfo?.program ?? -1;
+  return (p >= 1 && p <= 23) || (p >= 80 && p <= 103);                 // pianos, chromatic percussion, organs; synths
+}
+// A bassline: tabbed on 4 or 5 strings, or named a bass and tuned low. A keyboard-sounding part tabbed like that
+// ("Synth Bass" on four strings in Drop D) is played by the bassist too, so it's both a bass tab and a keyboard part.
+const isBassTuning = (name, tuning) => tuning.length === 4 || tuning.length === 5 || (/bass/i.test(name || '') && Math.min(...tuning) < 36);
+const bassTabbed = (t) => {
+  const st = t.staves.find((s) => !s.isPercussion && s.tuning?.length);
+  return !!st && isBassTuning(t.name, st.tuning);
+};
 
 // song-name matching rules: lower case, no accents/brackets/leading "the", letters+digits only
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
@@ -58,6 +84,56 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
   let mapped = { offset: 0, auto: true, tracks: [] }; // GP tracks laid onto the chart's bars
   let version = 0;
   const parsedCache = new Map(); // file -> { mtime, data }
+
+  // ---------- which instruments a file has (for the Library's filters) ----------
+  // Reading a file takes a few ms to a tenth of a second, so it's done in the background, one file at a time, and
+  // remembered in <data>/tabs/kinds.json by file and date. kindsOf() answers from that (null = not known yet);
+  // the library is told to refresh when new answers are in.
+  const kindsFile = path.join(dir, 'kinds.json');
+  const KINDS_VERSION = 2;     // bumped when the rules for telling instruments apart change: everything is read again
+  let kinds = {};              // file -> { mtime, kinds: ['guitar', 'bass', 'keys'] }
+  try { const k = JSON.parse(fs.readFileSync(kindsFile, 'utf8')); if (k.version === KINDS_VERSION) kinds = k.files || {}; } catch {}
+  const queue = new Set();
+  let working = false;
+  function kindsOf(file) {
+    let mtime;
+    try { mtime = Math.round(fs.statSync(path.join(dir, file)).mtimeMs); } catch { return null; }
+    const k = kinds[file];
+    if (k && k.mtime === mtime) return k.kinds;
+    queue.add(file);
+    if (!working) { working = true; setTimeout(work, 50); }
+    return null;
+  }
+  async function work() {
+    let found = 0;
+    for (const file of queue) {
+      queue.delete(file);
+      const full = path.join(dir, file);
+      let mtime;
+      try { mtime = Math.round(fs.statSync(full).mtimeMs); } catch { continue; } // gone
+      try {
+        const A = await alphaTab();
+        const score = A.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(full)), new A.Settings());
+        const has = new Set();
+        for (const t of score.tracks) {
+          const notes = t.staves.some((s) => !s.isPercussion && s.bars.some((b) => b.voices.some((v) => v.beats.some((x) => x.notes.length))));
+          if (!notes) continue;
+          if (isKeys(t)) { has.add('keys'); if (!bassTabbed(t)) continue; }
+          const st = t.staves.find((s) => !s.isPercussion && s.tuning?.length);
+          if (st) has.add(isBassTuning(t.name, st.tuning) || /bass/i.test(t.name) ? 'bass' : 'guitar');
+        }
+        kinds[file] = { mtime, kinds: [...has].sort() };
+      } catch { kinds[file] = { mtime, kinds: [] }; } // unreadable: read again only if the file changes
+      found++;
+      await new Promise((r) => setTimeout(r, 5));           // let the server breathe between files
+    }
+    working = false;
+    if (!found) return;
+    // forget files that are gone, save, and let the library refresh
+    for (const f of Object.keys(kinds)) if (!fs.existsSync(path.join(dir, f))) delete kinds[f];
+    try { fs.writeFileSync(`${kindsFile}.tmp`, JSON.stringify({ version: KINDS_VERSION, files: kinds })); fs.renameSync(`${kindsFile}.tmp`, kindsFile); } catch (e) { log('Tabs: could not save kinds', e.message); }
+    onChange();
+  }
   const current = () => song;
 
   // ---------- which file goes with this song ----------
@@ -86,17 +162,60 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
     const settings = new A.Settings();
     const score = A.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(full)), settings);
     // bars in the order they're played (repeats, alternate endings, D.S./D.C. expanded)
-    const midi = new A.midi.MidiFile();
-    const gen = new A.midi.MidiFileGenerator(score, settings, new A.midi.AlphaSynthMidiFileHandler(midi));
-    gen.generate();
+    // alphaTab can loop forever on some repeat/alternate-ending layouts, eating all memory: count its bar lookups
+    // (normal files need a few hundred per played bar) and give up past a cap, playing each bar once instead
+    const realBars = score.masterBars;
+    let lookups = 0;
+    const cap = 5000 * (realBars.length + 10);
+    score.masterBars = new Proxy(realBars, {
+      get(t, k, r) {
+        if (typeof k === 'string' && ++lookups > cap && /^\d+$/.test(k)) throw new Error('repeats loop');
+        return Reflect.get(t, k, r);
+      },
+    });
+    let order;
+    try {
+      const midi = new A.midi.MidiFile();
+      const gen = new A.midi.MidiFileGenerator(score, settings, new A.midi.AlphaSynthMidiFileHandler(midi));
+      gen.generate();
+      order = gen.tickLookup.masterBars.map((m) => ({ mb: m.masterBar, len: Math.max(1, m.end - m.start) }));
+    } catch (e) {
+      if (e.message !== 'repeats loop') throw e;
+      log(`Tabs: ${file}: its repeats can't be played out (alphaTab loops), so each bar is played once`);
+      order = realBars.map((mb) => ({ mb, len: Math.max(1, mb.calculateDuration()) }));
+    } finally {
+      score.masterBars = realBars;
+    }
     let tempo = score.tempo || 120;
-    const played = gen.tickLookup.masterBars.map((m) => {
-      for (const a of m.masterBar.tempoAutomations || []) tempo = a.value || tempo;
-      const len = Math.max(1, m.end - m.start);
-      return { bar: m.masterBar.index, len, sec: (len / 960) * (60 / tempo), section: m.masterBar.section?.text || null }; // 960 ticks per quarter
+    const played = order.map(({ mb, len }) => {
+      for (const a of mb.tempoAutomations || []) tempo = a.value || tempo;
+      return { bar: mb.index, len, sec: (len / 960) * (60 / tempo), section: mb.section?.text || null }; // 960 ticks per quarter
     });
     const tracks = [];
     for (const t of score.tracks) {
+      // keyboard parts: real pitches, every staff (right hand on top), for the Keys view
+      if (isKeys(t)) {
+        const bars = score.masterBars.map(() => ({ notes: [], chords: [] }));
+        const two = t.staves.filter((s) => !s.isPercussion).length > 1;
+        t.staves.forEach((s, si) => {
+          if (s.isPercussion) return;
+          s.bars.forEach((bar, bi) => {
+            const out = bars[bi];
+            if (!out) return;
+            for (const v of bar.voices) for (const b of v.beats) {
+              if (b.isEmpty || !b.notes.length) continue;
+              if (si === 0 && b.hasChord && b.chord?.name) out.chords.push([b.playbackStart, b.chord.name]);
+              for (const n of b.notes) {
+                if (n.isDead || !(n.realValue > 0)) continue;
+                // hand: 0 right, 1 left (the grand staff's lower staff), -1 = the page decides by pitch
+                out.notes.push([b.playbackStart, b.playbackDuration, n.realValue, two ? Math.min(1, si) : -1, n.isTieDestination ? TAB.TIE : 0]);
+              }
+            }
+          });
+        });
+        tracks.push({ name: t.name || `Keys ${t.index + 1}`, kind: 'keys', tuning: [], capo: 0, bars, count: bars.reduce((a, b) => a + b.notes.length, 0) });
+        if (!bassTabbed(t)) continue;                       // else: also its tab, below
+      }
       const st = t.staves.find((s) => !s.isPercussion && s.tuning?.length);
       if (!st) continue;
       const tuning = [...st.tuning].reverse(); // alphaTab lists high → low; string 1 = lowest
@@ -114,7 +233,7 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
         }
         return { notes, chords };
       });
-      const kind = /bass/i.test(t.name) || (tuning.length <= 5 && tuning[0] < 36) ? 'bass' : 'guitar';
+      const kind = isBassTuning(t.name, tuning) || /bass/i.test(t.name) ? 'bass' : 'guitar';
       tracks.push({ name: t.name || `Track ${t.index + 1}`, kind, tuning, capo: st.capo || 0, bars, count: bars.reduce((a, b) => a + b.notes.length, 0) });
     }
     const data = { title: score.title, artist: score.artist, played, tracks: tracks.filter((t) => t.count > 0) };
@@ -151,7 +270,7 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
   }
   // the chart's notes for the instrument we line up with, and a "how many tab note times land on one" scorer
   function scorer(gp, chart) {
-    const ref = gp.tracks.find((t) => t.kind === 'guitar') || gp.tracks[0];
+    const ref = gp.tracks.find((t) => t.kind === 'guitar') || gp.tracks.find((t) => t.kind === 'bass') || gp.tracks[0];
     const onsets = (ref?.kind === 'bass' ? chart?.onsets?.bass : chart?.onsets?.guitar) || chart?.onsets?.guitar || chart?.onsets?.bass;
     if (!ref || !onsets?.length) return null;
     const near = (t) => {
@@ -347,8 +466,24 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
     return {
       offset: autoStart + shift, auto: shift === 0, autoOffset: autoStart, q: fit.q, match, beat,
       changes: pw ? pw.changes.map((c) => ({ name: c.name, shift: c.offset === null ? null : c.offset - autoStart })) : [],
-      tracks: gp.tracks.map((tr, i) => ({ id: `gp${i}`, name: tr.name, kind: tr.kind, source: 'gp', strings: tr.tuning.length, tuning: tr.tuning, capo: tr.capo, ...layTrack(tr, gp.played, bars, offset, fit.q) })),
+      tracks: gp.tracks.map((tr, i) => {
+        const laid = layTrack(tr, gp.played, bars, offset, fit.q);
+        if (tr.kind === 'keys') laid.notes = joinTies(laid.notes);
+        return { id: `gp${i}`, name: tr.name, kind: tr.kind, source: 'gp', strings: tr.tuning.length, tuning: tr.tuning, capo: tr.capo, ...laid };
+      }),
     };
+  }
+  // Keys: a tied note holds the key down, so it lengthens the note it's tied from instead of striking again.
+  function joinTies(notes) {
+    const out = [], held = new Map(); // pitch -> the note sounding on it
+    for (const n of notes) {
+      const prev = held.get(n[2]);
+      if (n[4] & TAB.TIE && prev && Math.abs(prev[0] + prev[1] - n[0]) < 0.08) { prev[1] = r3(n[0] + n[1] - prev[0]); continue; }
+      const m = [n[0], n[1], n[2], n[3], n[4] & ~TAB.TIE];
+      held.set(n[2], m);
+      out.push(m);
+    }
+    return out;
   }
   function relayout() { mapped = computeMapped(gp, chart, song); }
 
@@ -384,6 +519,9 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
       out.push({ id: `pro-${kind}`, name: kind === 'bass' ? 'Pro Bass (chart)' : 'Pro Guitar (chart)', kind, source: 'chart', strings,
         tuning: fromSong ? fromSong.slice(0, strings) : std[kind].slice(0, strings), tuningFrom: fromSong ? 'song' : 'assumed', notes: p.notes, chords: p.chords });
     }
+    // Pro Keys: real keys, already in time; `ranges` = where the 17-key window the player sees moves to
+    const k = chart?.pro?.keys;
+    if (k?.notes.length) out.push({ id: 'pro-keys', name: 'Pro Keys (chart)', kind: 'keys', source: 'chart', strings: 0, tuning: [], tuningFrom: 'chart', notes: k.notes, chords: [], ranges: k.ranges });
     return out;
   }
   // tuning set by hand for this song (shared by every device): overrides what the chart/file says
@@ -391,7 +529,8 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
     const set = song && index[songKey(song)]?.tunings?.[t.id];
     return set?.length === t.strings ? { ...t, tuning: set, tuningFrom: 'set' } : { ...t, tuningFrom: t.tuningFrom || 'file' };
   };
-  const allTracks = () => [...proTracks(), ...mapped.tracks].map(withTuning);
+  // (a keyboard part none of whose notes land in the song is left out)
+  const allTracks = () => [...proTracks(), ...mapped.tracks].filter((t) => t.kind !== 'keys' || t.notes.length).map(withTuning);
 
   // ---------- adding a file ----------
   // Attach a Guitar Pro file to a song: the one YARG is playing, or `forSong` ({ name, artist }, from the library).
@@ -437,7 +576,10 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
       meta = { title: s.title || '', artist: s.artist || '' };
     } catch (e) { log(`Tabs: downloaded ${name} can't be read: ${e.message}`); return; }
     const titled = !!norm(meta.title);
-    const fits = (s) => { const want = norm(s.name); return want && (titled ? norm(meta.title) === want || norm(meta.title).includes(want) : norm(name.replace(GP_EXT, '')).includes(want)); };
+    // titles compared loosely: "Running" and "Runnin'" are the same song
+    const loose = (t) => norm(String(t || '').replace(/(\w)in['’]?(?=\s|$)/gi, '$1ing'));
+    // the title in the file, or else the file name (tab titles have typos: "Mr. Robotto")
+    const fits = (s) => { const want = loose(s.name); return want && (loose(meta.title).includes(want) || loose(name.replace(GP_EXT, '')).includes(want)); };
     // a file with no title in it goes to the song "Find tab" was used for
     const target = cands.find(fits) || (!titled && recent ? recent.song : null);
     if (!target) {
@@ -539,6 +681,8 @@ export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
     },
     // The Guitar Pro file kept for a song ({ name, artist }), or null: quick, for the library list.
     fileFor: (s) => { try { return findFile(s); } catch { return null; } },
+    // the instruments in a kept Guitar Pro file (['guitar', 'keys'], …), or null while it hasn't been read yet
+    kindsOf,
     // the same for many songs at once (the tabs folder is read once)
     filesFor(list) {
       let names = [];
