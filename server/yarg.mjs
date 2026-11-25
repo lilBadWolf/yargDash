@@ -43,7 +43,7 @@ export function defaultYargDirs() {
 // ---------------------------------------------------------------------------
 // .sng container (https://github.com/mdsitton/SngFileFormat): read just the file we need
 // ---------------------------------------------------------------------------
-function readSngFiles(file, wanted) {
+export function readSngFiles(file, wanted) {
   const fd = fs.openSync(file, 'r');
   try {
     const rd = (pos, len) => { const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, pos); return b; };
@@ -523,7 +523,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     const scene = SCENE[b[6]] || 'unknown', paused = b[7], bpm = b.readFloatLE(9), beat = b[38];
     const prev = stream;
     stream = { live: true, at: w, scene, paused, bpm };
-    if (!prev.live) { log('YARG data stream: receiving'); setDetected(); sendClock(); }
+    if (!prev.live) { log('YARG data stream: receiving'); setBlocked(false); setDetected(); sendClock(); }
     if (scene !== prev.scene) pollMenuSong();
     else if (scene !== prev.scene || Math.round(bpm) !== Math.round(prev.bpm) || (paused === 2) !== (prev.paused === 2)) sendClock();
     if (beat < 3 && (scene === 'gameplay' || scene === 'practice') && paused !== 2) broadcast({ type: 'yargBeat', k: beat });
@@ -577,6 +577,19 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
   sock.on('message', onPacket);
   sock.on('error', (e) => log('YARG data stream: cannot listen on UDP', YARG_UDP_PORT, '-', e.message));
   sock.bind(YARG_UDP_PORT);
+  // macOS Local Network privacy: an app that's never let onto the local network has broadcasts it receives
+  // dropped, without asking. macOS only asks when the app sends something, so send one harmless packet (to the
+  // discard port) once listening: that brings up the "find devices on your local network" prompt for the app.
+  if (process.platform === 'darwin') {
+    sock.once('listening', () => {
+      try {
+        sock.setBroadcast(true);
+        sock.send(Buffer.from('yargDash'), 9, '255.255.255.255', (e) => {
+          if (e) log(`YARG data stream: macOS won't let yargDash onto the local network (${e.code || e.message}): allow it in System Settings → Privacy & Security → Local Network`);
+        });
+      } catch {}
+    });
+  }
 
   const liveTimer = setInterval(() => {
     if (stream.live && wall() - stream.at > 2) {
@@ -748,6 +761,15 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
 
   // tail YARG's log (logs/<date>[_n].log; a new file each launch/day)
   let logFile = null, logPos = 0, logWatcher = null;
+  // YARG logging "Error sending UDP packet": its data stream isn't getting out. Seen on Macs that refuse YARG's
+  // broadcast (then yarg/start-yarg.sh's fix helps), or when YARG was started by an app without Local Network access.
+  let sendBlocked = false;
+  function setBlocked(on) {
+    if (on === sendBlocked) return;
+    sendBlocked = on;
+    if (on) log('YARG data stream: YARG can\'t send it ("Error sending UDP packet" in its log)');
+    broadcast({ type: 'yarg', yarg: info() });
+  }
   function attachLog() {
     const dir = path.join(path.dirname(watchedFile || ''), 'logs');
     let newest = null;
@@ -762,6 +784,16 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     logWatcher?.close();
     const fresh = logFile !== null; // a new log while we were watching = YARG (re)started: read it from the top
     logFile = newest.f; logPos = fresh ? 0 : newest.size;
+    setBlocked(false);
+    // YARG already running: are its latest lines send errors? (only that: older lines would upset the menu timing)
+    if (!fresh && !stream.live) {
+      try {
+        const n = Math.min(newest.size, 64 * 1024), buf = Buffer.alloc(n), fd = fs.openSync(logFile, 'r');
+        try { fs.readSync(fd, buf, 0, n, newest.size - n); } finally { fs.closeSync(fd); }
+        const lines = buf.toString('utf8').trim().split('\n');
+        if (lines.slice(-20).some((l) => l.includes('Error sending UDP packet'))) setBlocked(true);
+      } catch {}
+    }
     try { logWatcher = fs.watch(logFile, readLog); } catch { logWatcher = null; }
     if (fresh) readLog();
   }
@@ -778,7 +810,10 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
       const end = text.lastIndexOf('\n');
       if (end < 0) return;
       logPos += Buffer.byteLength(text.slice(0, end + 1));
-      for (const line of text.slice(0, end).split('\n')) if (/CreateAudioMixer:\d+\] Loaded \d+ stems/.test(line)) onAudioLoaded();
+      for (const line of text.slice(0, end).split('\n')) {
+        if (/CreateAudioMixer:\d+\] Loaded \d+ stems/.test(line)) onAudioLoaded();
+        else if (!sendBlocked && !stream.live && line.includes('Error sending UDP packet')) setBlocked(true);
+      }
     } catch {} finally { if (fd !== undefined) fs.closeSync(fd); }
   }
   const logTimer = setInterval(attachLog, 3000);
@@ -786,6 +821,16 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
   // ---------- scores (YARG's scores/scores.db, written when a song ends) ----------
   let sqlite = null, scoresFile = null;
   import('node:sqlite').then((m) => { sqlite = m; readScores(true); }).catch(() => log('YARG scores: needs Node 22.13+ (node:sqlite); skipped'));
+  // Run fn(db) on YARG's scores database (read-only); null when there isn't one (or no node:sqlite).
+  function withScores(fn) {
+    if (!sqlite || !watchedFile) return null;
+    const f = path.join(path.dirname(watchedFile), 'scores', 'scores.db');
+    if (!fs.existsSync(f)) return null;
+    let db;
+    try { db = new sqlite.DatabaseSync(f, { readOnly: true }); return fn(db); }
+    catch (e) { log('YARG scores:', e.message); return null; }
+    finally { try { db?.close(); } catch {} }
+  }
   function readScores(announce) {
     if (!sqlite || !watchedFile) return;
     const f = path.join(path.dirname(watchedFile), 'scores', 'scores.db');
@@ -822,7 +867,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
   // YARG may be installed/started after the bridge, or switch between release and nightly
   const rescan = setInterval(() => { if (currentSongFile() !== watchedFile) watch(); }, 10000);
 
-  function info() { return { detected, song, lyrics: song ? lyrics : menuLyrics, menuSong, results, tabs: tabs?.info() ?? null, clock: clockMsg(), file: watchedFile }; }
+  function info() { return { detected, streamBlocked: sendBlocked, song, lyrics: song ? lyrics : menuLyrics, menuSong, results, tabs: tabs?.info() ?? null, clock: clockMsg(), file: watchedFile }; }
   return {
     snapshot: info,
     // the Lanes view's notes for the song shown (the one being played, else the menu music): { song: {name, artist}, lanes }
@@ -831,6 +876,27 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
       return { song: s ? { name: s.name, artist: s.artist } : null, lanes: (song ? songLanes : menuLanes) || {} };
     },
     setDir() { watch(); readScores(true); broadcast({ type: 'yarg', yarg: info() }); },
+    // YARG's data folder (settings.json, scores/): the one with currentSong.json
+    dataDir: () => (watchedFile ? path.dirname(watchedFile) : null),
+    // Every song's plays and best band result, for the library: { `${name}\n${artist}`: { plays, score, stars } }
+    playStats() {
+      return withScores((db) => {
+        const out = {};
+        for (const r of db.prepare('SELECT SongName, SongArtist, COUNT(*) AS n, MAX(BandScore) AS score, MAX(BandStars) AS stars FROM GameRecords GROUP BY SongName, SongArtist').all()) {
+          out[`${r.SongName}\n${r.SongArtist}`] = { plays: Number(r.n) || 0, score: Number(r.score) || 0, stars: Number(r.stars) || 0 };
+        }
+        return out;
+      }) || {};
+    },
+    // A song's best band result with its players, and how often it was played (null if never)
+    bestFor(name, artist) {
+      return withScores((db) => {
+        const b = db.prepare(`SELECT ${REC_COLS} FROM GameRecords WHERE SongName = ? AND SongArtist = ? ORDER BY BandScore DESC LIMIT 1`).get(name, artist);
+        if (!b) return null;
+        const n = db.prepare('SELECT COUNT(*) AS n FROM GameRecords WHERE SongName = ? AND SongArtist = ?').get(name, artist).n;
+        return { ...recordWithPlayers(db, b), plays: Number(n) || 0 };
+      });
+    },
     // A device asks to do something once per play:
     // the first to ask gets true, the rest false.
     claim(key) {

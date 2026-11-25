@@ -6,6 +6,7 @@ import { post } from './conn.js';
 
 export const yarg = reactive({
   detected: false,  // YARG running (or its data stream / a song seen): shows the YARG tab
+  streamBlocked: false, // YARG logs "Error sending UDP packet": its stream can't get out (macOS: restart it with the fix)
   song: null,       // { name, artist, album, charter, year, length, location }
   lyrics: null,     // { parts: { vocals|harm1|harm2|harm3: { phrases: [{ s, e, syl: [{ t, x, j }] }], notes: [[s, e, midi, talky]] } },
                     //   sections: [{ t, name }], beats: [[t, k]] (k 0 = bar line, 1 = beat) } | { error }
@@ -28,6 +29,7 @@ export function onYargMessage(msg) {
     const y = msg.yarg;
     if (msg.type === 'snapshot') yarg.local = !!msg.local;
     yarg.detected = !!y.detected;
+    yarg.streamBlocked = !!y.streamBlocked;
     yarg.song = y.song;
     yarg.lyrics = y.lyrics;
     yarg.menuSong = y.menuSong || null;

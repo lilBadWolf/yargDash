@@ -8,6 +8,8 @@ import PitchGuide from '../components/PitchGuide.vue';
 import ClickPanel from '../components/ClickPanel.vue';
 import TabPanel from '../components/TabPanel.vue';
 import LanesPanel from '../components/LanesPanel.vue';
+import StartYarg from '../components/StartYarg.vue';
+import { conn } from '../lib/conn.js';
 import { yarg, songTime, synced, fmtTime, partKeys, partKey, PART_LABELS, sectionIndexAt, STAR_LABEL, shownSong, confirmMenu, tabTrackId, uploadTab, findTab, setTabOffset, removeTab, setTabTuning, TUNINGS, tuningName, tuningNotes } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 import { route } from '../lib/router.js';
@@ -222,7 +224,11 @@ function share() {
 
     <div v-if="tabMsg || (mode === 'tab' && yarg.tabs?.error)" class="hint">{{ tabMsg || yarg.tabs.error }}</div>
     <div v-if="showStreamHint" class="hint">
-      Lyrics aren't following the song. Turn on <b>Settings → All Settings → Experimental → Enable UDP Data Stream</b> in YARG; on a Mac, start YARG with <code>npm run yarg</code> in the yargDash folder (macOS blocks the stream otherwise).
+      <template v-if="yarg.streamBlocked && conn.platform === 'darwin'">
+        Lyrics aren't following the song: YARG is trying to send its data stream, but macOS is blocking it. Restart YARG with yargDash's fix.
+        <StartYarg compact class="dashstart" />
+      </template>
+      <template v-else>Lyrics aren't following the song. Turn on <b>Settings → All Settings → Experimental → Enable UDP Data Stream</b> in YARG.</template>
     </div>
 
     <div class="sheet" :class="{ flat: mode === 'click' }">
@@ -329,6 +335,7 @@ function share() {
 .follow button { margin-left: 4px; height: 24px; padding: 0 8px; border-radius: 7px; background: var(--btn); border: 1px solid var(--line); color: var(--text); font-weight: 700; font-size: 12px; }
 .lastline { flex: none; font-size: 13px; color: var(--muted); padding: 2px 2px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lastline b { color: var(--text); }
+.dashstart { margin-top: 8px; }
 .hint { flex: none; background: #3a2a0c; border: 1px solid #6b4d12; color: #f5cf7a; padding: 8px 12px; border-radius: 12px; font-size: 13px; }
 .sheet { flex: 1; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 10px 16px 4px; display: flex; flex-direction: column; gap: 8px; }
 .sheet > :last-child { flex: 1; min-height: 0; }

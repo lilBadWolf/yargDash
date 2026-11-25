@@ -42,7 +42,7 @@ const r3 = (x) => Math.round(x * 1000) / 1000;
 let alphaTabPromise = null;
 const alphaTab = () => (alphaTabPromise ??= import('@coderline/alphatab').then((m) => m.default ?? m));
 
-export function createTabs({ dataDir, log, broadcast }) {
+export function createTabs({ dataDir, log, broadcast, onChange = () => {} }) {
   const dir = path.join(dataDir, 'tabs');
   fs.mkdirSync(dir, { recursive: true });
   const indexFile = path.join(dir, 'index.json');
@@ -58,15 +58,17 @@ export function createTabs({ dataDir, log, broadcast }) {
   let mapped = { offset: 0, auto: true, tracks: [] }; // GP tracks laid onto the chart's bars
   let version = 0;
   const parsedCache = new Map(); // file -> { mtime, data }
+  const current = () => song;
 
   // ---------- which file goes with this song ----------
-  function findFile() {
-    if (!song) return null;
+  function findFile(s = song, names = null) {
+    if (!s) return null;
+    const song = s;
     const entry = index[songKey(song)];
     if (entry && fs.existsSync(path.join(dir, entry.file))) return entry.file;
     const want = new Set([norm(`${song.artist} ${song.name}`), norm(`${song.artist} - ${song.name}`), norm(song.name) + norm(song.artist)]);
     let byTitle = null;
-    for (const f of fs.readdirSync(dir)) {
+    for (const f of names || fs.readdirSync(dir)) {
       if (!GP_EXT.test(f)) continue;
       const base = norm(f.replace(GP_EXT, ''));
       if (want.has(base)) return f;
@@ -121,8 +123,8 @@ export function createTabs({ dataDir, log, broadcast }) {
   }
 
   // ---------- laying the tab onto the chart's bars ----------
-  function chartBars() {
-    const bars = (chart?.beats || []).filter(([, k]) => k === 0).map(([t]) => t);
+  function chartBars(ch = chart) {
+    const bars = (ch?.beats || []).filter(([, k]) => k === 0).map(([t]) => t);
     if (bars.length >= 2) bars.push(bars[bars.length - 1] + (bars[bars.length - 1] - bars[bars.length - 2])); // end of the last bar
     return bars;
   }
@@ -148,7 +150,7 @@ export function createTabs({ dataDir, log, broadcast }) {
     return { notes, chords };
   }
   // the chart's notes for the instrument we line up with, and a "how many tab note times land on one" scorer
-  function scorer() {
+  function scorer(gp, chart) {
     const ref = gp.tracks.find((t) => t.kind === 'guitar') || gp.tracks[0];
     const onsets = (ref?.kind === 'bass' ? chart?.onsets?.bass : chart?.onsets?.guitar) || chart?.onsets?.guitar || chart?.onsets?.bass;
     if (!ref || !onsets?.length) return null;
@@ -203,7 +205,7 @@ export function createTabs({ dataDir, log, broadcast }) {
   }
 
   // Pieces of the tab, in played bars [a, b): cut at section markers and repeat jumps; long ones every 16 bars.
-  function segments() {
+  function segments(gp) {
     const P = gp.played, cuts = [0];
     for (let k = 1; k < P.length; k++) {
       if (P[k].section || P[k].bar !== P[k - 1].bar + 1 || k - cuts[cuts.length - 1] >= 16) cuts.push(k);
@@ -220,7 +222,7 @@ export function createTabs({ dataDir, log, broadcast }) {
     return { kind, num };
   }
   // bonus for a tab piece named `name` starting at time t: a chart section starts there too, of the same kind (and number)
-  function sectionBonus(name, t, barLen) {
+  function sectionBonus(chart, name, t, barLen) {
     const secs = chart?.sections || [];
     let best = 0;
     for (const sc of secs) {
@@ -235,10 +237,10 @@ export function createTabs({ dataDir, log, broadcast }) {
 
   // Place each piece (offset, or left out), in order, maximising notes that land on chart notes, minus a cost for
   // every place where consecutive pieces don't follow on directly. Positions are in tab-bar units of the chart.
-  function piecewise(bars, q, phase = 0) {
-    const score = scorer();
+  function piecewise(gp, chart, bars, q, phase = 0) {
+    const score = scorer(gp, chart);
     if (!score) return null;
-    const segs = segments();
+    const segs = segments(gp);
     const VMIN = -MAX_OFFSET, VMAX = Math.ceil((bars.length - 1) / q) + MAX_OFFSET, N = VMAX - VMIN + 1;
     const NEG = -1e9;
     let dp = new Float64Array(N).fill(NEG), startScore = 0; // startScore: nothing placed yet
@@ -262,7 +264,7 @@ export function createTabs({ dataDir, log, broadcast }) {
         if (notes) { const r = score.range(bars, o + phase, q, sg.a, sg.b); gain = r.hits - 0.5 * (r.total - r.hits) - 0.5 * r.outside; }
         if (sg.name) {
           const P = (sg.a + o + phase) * q, j = Math.floor(P);
-          if (j >= 0 && j < bars.length - 1) gain += sectionBonus(sg.name, bars[j] + (P - j) * (bars[j + 1] - bars[j]), bars[j + 1] - bars[j]);
+          if (j >= 0 && j < bars.length - 1) gain += sectionBonus(chart, sg.name, bars[j] + (P - j) * (bars[j + 1] - bars[j]), bars[j + 1] - bars[j]);
         }
         let cand = startScore + gain, src = { v: -1, o };          // first placed piece: anywhere
         if (dp[st] + gain > cand) { cand = dp[st] + gain; src = { v: st, o }; }                 // follows on directly
@@ -294,8 +296,8 @@ export function createTabs({ dataDir, log, broadcast }) {
   }
   // ratio and offset that line the tab up best. Every ratio at whole-bar offsets first; then, for the best ratio,
   // offsets in twelfths of a bar: part of a bar is used only when it clearly beats the best whole bar.
-  function bestFit(bars) {
-    const score = scorer();
+  function bestFit(gp, chart, bars) {
+    const score = scorer(gp, chart);
     // the ratio the tab's own tempo implies: often right, sometimes not (see above), so it's only a mild preference
     const est = median(gp.played.map((p) => p.sec)) / median(bars.slice(1).map((t, i) => t - bars[i]));
     const away = (q) => Math.abs(Math.log2(q / est)); // 1 = twice or half what the tempo says
@@ -322,31 +324,33 @@ export function createTabs({ dataDir, log, broadcast }) {
     return { offset: best.offset, phase, q: best.q, match: best.total ? best.hits / best.total : 0 };
   }
 
-  function relayout() {
-    mapped = { offset: 0, auto: true, autoOffset: 0, q: 1, match: null, changes: [], tracks: [] };
-    if (!gp || !chart) return;
-    const bars = chartBars();
-    if (bars.length < 3) return;
-    const entry = song && index[songKey(song)];
-    const fit = bestFit(bars);
+  // The tab (gp) laid onto a song's chart (chart) for song s: offsets, match and every track's notes in song time.
+  function computeMapped(gp, chart, s) {
+    const none = { offset: 0, auto: true, autoOffset: 0, q: 1, match: null, changes: [], tracks: [] };
+    if (!gp || !chart) return none;
+    const bars = chartBars(chart);
+    if (bars.length < 3) return none;
+    const entry = s && index[songKey(s)];
+    const fit = bestFit(gp, chart, bars);
     // automatic: section by section (or the single best offset when there are no chart notes to match against)
-    const pw = piecewise(bars, fit.q, fit.phase);
+    const pw = piecewise(gp, chart, bars, fit.q, fit.phase);
     const autoStart = pw ? pw.offs.find((o) => o !== null) ?? fit.offset : fit.offset;
     // a nudge by hand shifts everything, keeping the section adjustments
     const shift = typeof entry?.shift === 'number' ? entry.shift : 0;
     const offset = pw ? pw.offs.map((o) => (o === null ? null : o + shift)) : fit.offset + shift;
     let match = pw ? pw.match : fit.match;
-    if (shift) { const sc = scorer(); const r = sc && sc(bars, autoStart + shift, fit.q); match = r ? (r.total ? r.hits / r.total : 0) : null; }
+    if (shift) { const sc = scorer(gp, chart); const r = sc && sc(bars, autoStart + shift, fit.q); match = r ? (r.total ? r.hits / r.total : 0) : null; }
     // one chart beat in tab bars, for nudging by a beat
     let n = 0; const per = [];
     for (const [, k] of chart.beats || []) { if (k === 0 && n) { per.push(n); n = 0; } n++; }
     const beat = 1 / ((median(per) || 4) * fit.q);
-    mapped = {
+    return {
       offset: autoStart + shift, auto: shift === 0, autoOffset: autoStart, q: fit.q, match, beat,
       changes: pw ? pw.changes.map((c) => ({ name: c.name, shift: c.offset === null ? null : c.offset - autoStart })) : [],
       tracks: gp.tracks.map((tr, i) => ({ id: `gp${i}`, name: tr.name, kind: tr.kind, source: 'gp', strings: tr.tuning.length, tuning: tr.tuning, capo: tr.capo, ...layTrack(tr, gp.played, bars, offset, fit.q) })),
     };
   }
+  function relayout() { mapped = computeMapped(gp, chart, song); }
 
   async function load() {
     const my = ++version;
@@ -368,7 +372,8 @@ export function createTabs({ dataDir, log, broadcast }) {
     if (my === version) { version++; broadcast({ type: 'yargTabs', tabs: info() }); }
   }
 
-  function proTracks() {
+  function proTracks(chart_ = chart) {
+    const chart = chart_;
     const out = [];
     const std = { guitar: [40, 45, 50, 55, 59, 64], bass: [28, 33, 38, 43, 48, 53] };
     for (const kind of ['guitar', 'bass']) {
@@ -389,7 +394,9 @@ export function createTabs({ dataDir, log, broadcast }) {
   const allTracks = () => [...proTracks(), ...mapped.tracks].map(withTuning);
 
   // ---------- adding a file ----------
-  async function attach(name, buf) {
+  // Attach a Guitar Pro file to a song: the one YARG is playing, or `forSong` ({ name, artist }, from the library).
+  async function attach(name, buf, forSong = null) {
+    const song = forSong || current();
     if (!song) throw new Error('No YARG song is playing to attach the tab to');
     const ext = (name.match(GP_EXT) || [])[0];
     if (!ext) throw new Error('Not a Guitar Pro file (.gp, .gpx, .gp5, .gp4, .gp3)');
@@ -403,6 +410,7 @@ export function createTabs({ dataDir, log, broadcast }) {
     fs.writeFileSync(path.join(dir, file), buf);
     index[songKey(song)] = { ...index[songKey(song)], file, shift: 0 };
     saveIndex();
+    onChange();
     await load();
     return file;
   }
@@ -410,14 +418,17 @@ export function createTabs({ dataDir, log, broadcast }) {
   // Guitar Pro files that land in the Downloads folder (after "Find tab") are attached to the song YARG is playing
   // when their title (inside the file, or else in the file name) is the song's. A file with no title in it is taken
   // only if "Find tab" was used for this song in the last half hour. The download itself is left where it is.
-  let findFor = null;            // { key: songKey, at }
+  let findFor = null;            // { song: { name, artist }, at }
   const seen = new Map();        // full path -> mtime already looked at
   async function consider(full) {
     let st;
     try { st = fs.statSync(full); } catch { return; }      // renamed away / removed
     if (!st.isFile() || Date.now() - st.mtimeMs > 10 * 60e3 || seen.get(full) === st.mtimeMs) return;
     seen.set(full, st.mtimeMs);
-    if (!song) return;
+    // candidates: the song YARG is playing, and the song "Find tab" was last used for (from the library) if recent
+    const recent = findFor && Date.now() - findFor.at < 30 * 60e3 ? findFor : null;
+    const cands = [song, recent?.song].filter(Boolean);
+    if (!cands.length) return;
     const name = path.basename(full), buf = fs.readFileSync(full);
     let meta;
     try {
@@ -425,15 +436,15 @@ export function createTabs({ dataDir, log, broadcast }) {
       const s = A.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(buf), new A.Settings());
       meta = { title: s.title || '', artist: s.artist || '' };
     } catch (e) { log(`Tabs: downloaded ${name} can't be read: ${e.message}`); return; }
-    const want = norm(song.name);
     const titled = !!norm(meta.title);
-    const ok = want && (titled ? norm(meta.title) === want || norm(meta.title).includes(want) : norm(name.replace(GP_EXT, '')).includes(want));
-    const found = findFor && findFor.key === songKey(song) && Date.now() - findFor.at < 30 * 60e3;
-    if (!ok && !(found && !titled)) {
-      log(`Tabs: downloaded ${name} (“${meta.title || '?'}” by ${meta.artist || '?'}) isn't ${song.artist} - ${song.name}: left alone`);
+    const fits = (s) => { const want = norm(s.name); return want && (titled ? norm(meta.title) === want || norm(meta.title).includes(want) : norm(name.replace(GP_EXT, '')).includes(want)); };
+    // a file with no title in it goes to the song "Find tab" was used for
+    const target = cands.find(fits) || (!titled && recent ? recent.song : null);
+    if (!target) {
+      log(`Tabs: downloaded ${name} (“${meta.title || '?'}” by ${meta.artist || '?'}) isn't ${cands.map((s) => `${s.artist} - ${s.name}`).join(' or ')}: left alone`);
       return;
     }
-    try { log(`Tabs: attached downloaded ${name} as ${await attach(name, buf)}`); } catch (e) { log(`Tabs: couldn't attach ${name}: ${e.message}`); }
+    try { log(`Tabs: attached downloaded ${name} as ${await attach(name, buf, target)}`); } catch (e) { log(`Tabs: couldn't attach ${name}: ${e.message}`); }
   }
   function watchDownloads(folder) {
     const timers = new Map();
@@ -478,9 +489,10 @@ export function createTabs({ dataDir, log, broadcast }) {
     upload: attach,
     // "Find tab": the Ultimate Guitar search for this song (Guitar Pro files only), to open in the Mac's browser.
     // Remembered for a while so a download with no title in it can still be matched to the song (see consider()).
-    find() {
+    find(forSong = null) {
+      const song = forSong || current();
       if (!song) return null;
-      findFor = { key: songKey(song), at: Date.now() };
+      findFor = { song: { name: song.name, artist: song.artist }, at: Date.now() };
       const q = `${song.artist || ''} ${song.name}`.replace(/\(.*?\)|\[.*?\]/g, '').replace(/\s+/g, ' ').trim();
       return `https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(q)}&type=500`;
     },
@@ -513,14 +525,41 @@ export function createTabs({ dataDir, log, broadcast }) {
       broadcast({ type: 'yargTabs', tabs: info() });
       return true;
     },
-    remove() {
-      if (!song || !gp) return false;
-      fs.rmSync(path.join(dir, gp.file), { force: true });
-      const { tunings } = index[songKey(song)] || {};
-      if (tunings) index[songKey(song)] = { tunings }; else delete index[songKey(song)];
+    remove(forSong = null) {
+      const s = forSong || current();
+      const file = forSong ? findFile(forSong) : gp?.file;
+      if (!s || !file) return false;
+      fs.rmSync(path.join(dir, file), { force: true });
+      const { tunings } = index[songKey(s)] || {};
+      if (tunings) index[songKey(s)] = { tunings }; else delete index[songKey(s)];
       saveIndex();
-      load();
+      onChange();
+      if (!forSong || (song && songKey(song) === songKey(forSong))) load();
       return true;
+    },
+    // The Guitar Pro file kept for a song ({ name, artist }), or null: quick, for the library list.
+    fileFor: (s) => { try { return findFile(s); } catch { return null; } },
+    // the same for many songs at once (the tabs folder is read once)
+    filesFor(list) {
+      let names = [];
+      try { names = fs.readdirSync(dir).filter((f) => GP_EXT.test(f)); } catch {}
+      return list.map((s) => { try { return findFile(s, names); } catch { return null; } });
+    },
+    // How a song's tabs look without playing it: its chart's Pro parts and its Guitar Pro file, lined up with the chart.
+    async analyze(s, chartData) {
+      const out = { file: null, error: '', match: null, ratio: 1, changes: [], auto: true, tracks: [] };
+      out.tracks.push(...proTracks(chartData).map((t) => ({ id: t.id, name: t.name, kind: t.kind, source: 'chart', strings: t.strings, tuning: t.tuning, tuningFrom: t.tuningFrom, count: t.notes.length })));
+      const file = findFile(s);
+      if (!file) return out;
+      out.file = file;
+      try {
+        const g = { file, ...(await parseGp(file)) };
+        const m = computeMapped(g, chartData, s);
+        Object.assign(out, { match: m.match ?? null, ratio: m.q ?? 1, auto: m.auto, changes: m.changes || [], title: g.title || '', artist: g.artist || '' });
+        out.tracks.push(...g.tracks.map((tr, i) => ({ id: `gp${i}`, name: tr.name, kind: tr.kind, source: 'gp', strings: tr.tuning.length, tuning: tr.tuning, count: tr.count })));
+        out.playedBars = g.played.length;
+      } catch (e) { out.error = `Couldn't read ${file}: ${e.message}`; }
+      return out;
     },
   };
 }

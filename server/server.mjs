@@ -11,8 +11,9 @@
 // Endpoints (CORS open, LAN use):
 //   GET  /                the dashboard (dist/index.html: `npm run build`)
 //   GET  /events          SSE stream: {type:'snapshot'|'yarg'|'yargClock'|'yargBeat'|'yargTabs', ...}
-//   GET  /status          JSON status (code fingerprint, pid, LAN addresses)
+//   GET  /status          JSON status: {name:'yargDash', version, code fingerprint, pid, LAN addresses}
 //   POST /config          {yargDir:'/path/to/YARG data'} ('' = auto: YARG's standard data folder)
+//                         {streamLocal:true}  macOS: YARG started by yargDash sends its stream to this Mac only (127.0.0.1)
 //   POST /yarg/menusync   {on:true}                     the menu song started from the top: follow it (approximate)
 //   GET  /yarg/lanes                                    the Lanes view's notes: every guitar/bass/drums/keys part of the song shown
 //   GET  /yarg/tab/track?id=pro-guitar|gp0…             tablature for one track of the current song (times in song seconds)
@@ -22,6 +23,16 @@
 //   POST /yarg/tab/tuning {track, tuning:[midi…]|null}  set a track's tuning for this song (null = as the chart/file says)
 //   POST /yarg/tab/find                                 open the Ultimate Guitar search for the song in this computer's browser (this computer only)
 //   POST /restart                                       start a fresh copy of the server and exit (this computer only)
+//   POST /yarg/start      {app?:'/path/YARG.app', restart?:true}  macOS: start YARG with its data stream working (this computer only)
+//   GET  /library                                       every song in YARG's song folders (see library.mjs)
+//   POST /library/rescan                                look through the song folders again
+//   GET  /library/song?id=                              one song in full: parts, sections, tabs lined up, best score
+//   GET  /library/art?id=                               its album art
+//   POST /library/tab/find?id=                          "Find tab" for a library song (this computer only)
+//   POST /library/tab/upload?id=&name=  (raw bytes)     attach a Guitar Pro file to a library song
+//   POST /library/tab/remove?id=                        detach (delete) a library song's Guitar Pro file
+//
+// The desktop app (electron/main.mjs) runs this same file with YARGDASH_APP=1 and its own --data folder.
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -32,10 +43,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createYarg } from './yarg.mjs';
 import { createTabs } from './tabs.mjs';
+import { createLibrary } from './library.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const PAGE = path.join(ROOT, 'dist', 'index.html');
+const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch { return ''; } })();
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -67,7 +80,7 @@ if (args.log) {
   process.stderr.write = write;
 }
 
-let config = { httpPort: 8900, yargDir: '' };
+let config = { httpPort: 8900, yargDir: '', streamLocal: false };
 try { config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) }; } catch {}
 if (args.port) config.httpPort = Number(args.port);
 const saveConfig = () => fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), () => {});
@@ -85,6 +98,29 @@ const isLocal = (req) => {
   const a = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
   return a === '127.0.0.1' || a === '::1' || Object.values(os.networkInterfaces()).flat().some((i) => i?.address === a);
 };
+
+// macOS: start YARG with the data-stream fix (yarg/start-yarg.sh). The desktop app says where its copy of the
+// script and its prebuilt library are (YARGDASH_YARG_DIR, YARGDASH_LIB) and where to keep the launcher's state.
+// -> { ok, code (2 = YARG.app not found, 3 = YARG is running), message }
+function startYarg({ app = '', restart = false } = {}) {
+  if (process.platform !== 'darwin') return Promise.resolve({ ok: false, code: 1, message: 'Only needed on macOS: start YARG as usual.' });
+  const script = path.join(process.env.YARGDASH_YARG_DIR || path.join(ROOT, 'yarg'), 'start-yarg.sh');
+  const args = [script, ...(restart ? ['--restart'] : []), ...(app ? [app] : [])];
+  return new Promise((resolve) => {
+    const env = { ...process.env, YARGDASH_STREAM_LOCAL: config.streamLocal ? '1' : '0' };
+    execFile('sh', args, { timeout: 60000, env }, (e, out, err) => {
+      const lines = `${out || ''}${err || ''}`.trim().split('\n').filter(Boolean);
+      log(`Start YARG: ${lines.join(' / ') || (e ? e.message : 'ok')}`);
+      resolve({ ok: !e, code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, message: lines[lines.length - 1] || (e ? e.message : '') });
+    });
+  });
+}
+
+// Open a web page in this computer's browser.
+function openUrl(link) {
+  const [cmd, cargs] = process.platform === 'darwin' ? ['open', [link]] : process.platform === 'win32' ? ['explorer', [link]] : ['xdg-open', [link]];
+  execFile(cmd, cargs, (e) => { if (e) log('Could not open the browser:', e.message); });
+}
 
 // ---------- SSE ----------
 const clients = new Set();
@@ -126,13 +162,14 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === '/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.write(`data: ${JSON.stringify({ type: 'snapshot', lan: lanIps(), local: isLocal(req), code: CODE_HASH, yarg: yarg.snapshot() })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', lan: lanIps(), local: isLocal(req), code: CODE_HASH, app: !!process.env.YARGDASH_APP, platform: process.platform, library: library.version(), yarg: yarg.snapshot() })}\n\n`);
     clients.add(res);
     const ka = setInterval(() => res.write(': ka\n\n'), 15000);
     req.on('close', () => { clients.delete(res); clearInterval(ka); });
     return;
   }
-  if (url.pathname === '/status') return json(200, { config, clients: clients.size, lan: lanIps(), code: CODE_HASH, pid: process.pid, data: DATA_DIR });
+  // name/version: how other programs on this computer (e.g. Live Console's bridge) recognise a running yargDash
+  if (url.pathname === '/status') return json(200, { name: 'yargDash', version: VERSION, app: !!process.env.YARGDASH_APP, config, clients: clients.size, lan: lanIps(), code: CODE_HASH, pid: process.pid, data: DATA_DIR });
   if (url.pathname === '/yarg/lanes') return json(200, yarg.lanes());
   if (url.pathname.startsWith('/yarg/tab/')) {
     try {
@@ -145,13 +182,44 @@ const server = http.createServer(async (req, res) => {
         if (!isLocal(req)) return json(403, { error: 'Only from the YARG computer' });
         const link = tabs.find();
         if (!link) return json(409, { error: 'No YARG song is playing' });
-        const [cmd, cargs] = process.platform === 'darwin' ? ['open', [link]] : process.platform === 'win32' ? ['explorer', [link]] : ['xdg-open', [link]];
-        execFile(cmd, cargs, (e) => { if (e) log('Tabs: could not open the browser:', e.message); });
+        openUrl(link);
         return json(200, { url: link });
       }
       if (url.pathname === '/yarg/tab/tuning') { const b = await readBody(req); return json(200, { ok: tabs.setTuning(b.track, b.tuning ?? null) }); }
     } catch (e) { return json(400, { error: e.message }); }
     return json(404, { error: 'not found' });
+  }
+  if (url.pathname === '/library' || url.pathname.startsWith('/library/')) {
+    try {
+      if (url.pathname === '/library') return json(200, library.list());
+      if (url.pathname === '/library/rescan' && req.method === 'POST') { await library.rescan('asked to'); return json(200, { ok: true, version: library.version() }); }
+      const id = url.searchParams.get('id') || '';
+      if (url.pathname === '/library/song') { const s = await library.song(id); return s ? json(200, s) : json(404, { error: 'no such song' }); }
+      if (url.pathname === '/library/art') {
+        const a = library.art(id);
+        if (!a) { res.statusCode = 404; return res.end(); }
+        res.writeHead(200, { 'Content-Type': a.type, 'Cache-Control': 'max-age=86400' });
+        return res.end(a.data);
+      }
+      if (req.method !== 'POST') return json(405, { error: 'POST' });
+      const e = library.meta(id);
+      if (!e) return json(404, { error: 'no such song' });
+      const who = { name: e.name, artist: e.artist };
+      if (url.pathname === '/library/tab/find') {
+        if (!isLocal(req)) return json(403, { error: 'Only from the YARG computer' });
+        const link = tabs.find(who);
+        openUrl(link);
+        return json(200, { url: link });
+      }
+      if (url.pathname === '/library/tab/upload') return json(200, { file: await tabs.upload(url.searchParams.get('name') || '', await readRaw(req), who) });
+      if (url.pathname === '/library/tab/remove') return json(200, { ok: tabs.remove(who) });
+    } catch (e) { return json(400, { error: e.message }); }
+    return json(404, { error: 'not found' });
+  }
+  if (req.method === 'POST' && url.pathname === '/yarg/start') {
+    if (!isLocal(req)) return json(403, { error: 'Only from the YARG computer' });
+    const b = await readBody(req);
+    return json(200, await startYarg({ app: typeof b.app === 'string' ? b.app.trim() : '', restart: !!b.restart }));
   }
   if (req.method === 'POST' && url.pathname === '/yarg/menusync') {
     const body = await readBody(req);
@@ -163,7 +231,9 @@ const server = http.createServer(async (req, res) => {
       config.yargDir = body.yargDir.trim();
       saveConfig();
       yarg.setDir();
+      library.rescan('YARG folder changed');
     }
+    if (typeof body.streamLocal === 'boolean') { config.streamLocal = body.streamLocal; saveConfig(); }
     return res.end('ok');
   }
   if (req.method === 'POST' && url.pathname === '/restart') {
@@ -176,14 +246,21 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ---------- YARG ----------
-const tabs = createTabs({ dataDir: DATA_DIR, log, broadcast });
+const tabs = createTabs({ dataDir: DATA_DIR, log, broadcast, onChange: () => library.bump() }); // (library is set up below; tabs only change later)
 const yarg = createYarg({ log, broadcast, getDir: () => config.yargDir, tabs });
+const library = createLibrary({ dataDir: DATA_DIR, log, broadcast, yarg, tabs });
 tabs.watchDownloads(path.join(os.homedir(), 'Downloads'));
 
 // Restart: start a copy of ourselves (same arguments) and exit; it waits for us to be gone (--after).
-// Pages reconnect to the new copy by themselves.
+// Pages reconnect to the new copy by themselves. In the desktop app (YARGDASH_APP) the app starts the new copy:
+// exit code 75 asks it to.
 function restart(reason) {
   log(`restarting (${reason})`);
+  if (process.env.YARGDASH_APP) {
+    server.close();
+    for (const c of clients) c.end();
+    return setTimeout(() => process.exit(75), 100);
+  }
   const argv = process.argv.slice(1);
   const i = argv.indexOf('--after');
   if (i >= 0) argv.splice(i, 2);

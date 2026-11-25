@@ -1,8 +1,10 @@
 {
   "name": "yargdash",
-  "version": "1.0.0",
+  "productName": "yargDash",
+  "version": "1.1.0",
   "description": "A live dashboard for a running YARG game: lyrics with harmonies and a pitch guide, Guitar Pro tabs in time, every part's note lanes, a click for the drummer, and scores, on any phone or screen on the network.",
   "type": "module",
+  "main": "electron/main.mjs",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,23 +18,120 @@
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["yarg", "rhythm game", "lyrics", "guitar pro", "dashboard", "vue"],
+  "keywords": [
+    "yarg",
+    "rhythm game",
+    "lyrics",
+    "guitar pro",
+    "dashboard",
+    "vue"
+  ],
   "scripts": {
     "start": "node scripts/start.mjs",
     "build": "vite build",
     "dev": "vite",
     "server": "node server/server.mjs",
     "restart": "node scripts/start.mjs --restart",
-    "yarg": "sh yarg/start-yarg.sh"
+    "yarg": "sh yarg/start-yarg.sh",
+    "app": "vite build && electron .",
+    "dist": "node scripts/dist.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@coderline/alphatab": "1.8.4",
-    "uqr": "^0.1.2",
-    "vue": "^3.5.46"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@vitejs/plugin-vue": "^6.0.11",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.18.0",
+    "uqr": "^0.1.2",
     "vite": "^6.4.6",
-    "vite-plugin-singlefile": "^2.3.4"
+    "vite-plugin-singlefile": "^2.3.4",
+    "vue": "^3.5.46"
+  },
+  "author": "lilBadWolf",
+  "build": {
+    "appId": "io.github.lilbadwolf.yargdash",
+    "productName": "yargDash",
+    "copyright": "MIT License",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "package.json",
+      "dist/index.html",
+      "server/**",
+      "electron/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "icon": "build/icon.icns",
+      "extraResources": [
+        {
+          "from": "yarg/start-yarg.sh",
+          "to": "yarg/start-yarg.sh"
+        },
+        {
+          "from": "yarg/build/yarg-broadcast.dylib",
+          "to": "yarg/yarg-broadcast.dylib"
+        }
+      ],
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "yargDash serves its dashboard to phones and tablets on your network and listens for YARG's data stream."
+      },
+      "identity": null
+    },
+    "dmg": {
+      "title": "yargDash",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "yargDash",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Audio",
+      "icon": "build/icon.png",
+      "maintainer": "lilBadWolf",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lilBadWolf",
+        "repo": "yargDash",
+        "releaseType": "draft"
+      }
+    ],
+    "afterSign": "scripts/sign-mac.cjs"
   }
 }

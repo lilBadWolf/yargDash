@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#241a3d"/><stop offset="1" stop-color="#0b0d10"/></linearGradient>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a1426" stop-opacity="0"/><stop offset="0.35" stop-color="#1c1630"/><stop offset="1" stop-color="#2a2140"/></linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="140" x2="0" y2="1066.5"><stop offset="0" stop-color="#b48cff" stop-opacity="0"/><stop offset="0.5" stop-color="#b48cff" stop-opacity="0.8"/><stop offset="1" stop-color="#b48cff"/></linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000"/><stop offset="0.3" stop-color="#fff"/></linearGradient>
+    <mask id="far"><rect width="1024" height="1024" fill="url(#fade)"/></mask>
+    <filter id="dim"><feColorMatrix type="matrix" values="0.6 0 0 0 0  0 0.6 0 0 0  0 0 0.6 0 0  0 0 0 1 0"/></filter>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <g mask="url(#far)">
+      <path d="M112 1066.5 L439.3 140 L584.7 140 L912 1066.5Z" fill="url(#road)"/>
+      <line x1="272" y1="1066.5" x2="468.4" y2="140" stroke="#fff" stroke-opacity="0.07" stroke-width="4"/><line x1="432" y1="1066.5" x2="497.5" y2="140" stroke="#fff" stroke-opacity="0.07" stroke-width="4"/><line x1="592" y1="1066.5" x2="526.5" y2="140" stroke="#fff" stroke-opacity="0.07" stroke-width="4"/><line x1="752" y1="1066.5" x2="555.6" y2="140" stroke="#fff" stroke-opacity="0.07" stroke-width="4"/><line x1="275" y1="605.1" x2="749" y2="605.1" stroke="#fff" stroke-opacity="0.16" stroke-width="5.2"/><line x1="334.2" y1="437.4" x2="689.8" y2="437.4" stroke="#fff" stroke-opacity="0.12" stroke-width="3.9"/><line x1="369.8" y1="336.7" x2="654.2" y2="336.7" stroke="#fff" stroke-opacity="0.1" stroke-width="3.1"/><line x1="393.5" y1="269.6" x2="630.5" y2="269.6" stroke="#fff" stroke-opacity="0.08" stroke-width="2.6"/><line x1="410.4" y1="221.7" x2="613.6" y2="221.7" stroke="#fff" stroke-opacity="0.06999999999999999" stroke-width="2.2"/><line x1="423.1" y1="185.8" x2="600.9" y2="185.8" stroke="#fff" stroke-opacity="0.06" stroke-width="1.9"/><line x1="433" y1="157.8" x2="591" y2="157.8" stroke="#fff" stroke-opacity="0.05" stroke-width="1.7"/><line x1="112" y1="1066.5" x2="439.3" y2="140" stroke="url(#edge)" stroke-width="12" stroke-linecap="round"/><line x1="912" y1="1066.5" x2="584.7" y2="140" stroke="url(#edge)" stroke-width="12" stroke-linecap="round"/>
+    </g>
+    <line x1="192" y1="840" x2="832" y2="840" stroke="#b48cff" stroke-opacity="0.55" stroke-width="10"/><ellipse cx="256" cy="840" rx="50.6" ry="23.3" fill="#0b0d10" stroke="#3ddc84" stroke-width="13.2"/><ellipse cx="384" cy="840" rx="50.6" ry="23.3" fill="#0b0d10" stroke="#ff4d5e" stroke-width="13.2"/><ellipse cx="512" cy="840" rx="50.6" ry="23.3" fill="#0b0d10" stroke="#ffd23f" stroke-width="13.2"/><ellipse cx="640" cy="840" rx="50.6" ry="23.3" fill="#0b0d10" stroke="#3d9bff" stroke-width="13.2"/><ellipse cx="768" cy="840" rx="50.6" ry="23.3" fill="#0b0d10" stroke="#ff9b3d" stroke-width="13.2"/>
+    <g mask="url(#far)"><g>
+    <ellipse cx="553.3" cy="226.3" rx="17.8" ry="8.2" fill="#3d9bff" filter="url(#dim)"/>
+    <rect x="535.5" y="221.8" width="35.5" height="4.5" fill="#3d9bff" filter="url(#dim)"/>
+    <ellipse cx="553.3" cy="221.8" rx="17.8" ry="8.2" fill="#3d9bff"/>
+    <ellipse cx="553.3" cy="221.8" rx="8.5" ry="3.9" fill="#fff" opacity="0.92"/>
+  </g><g>
+    <ellipse cx="405.3" cy="311.6" rx="22.9" ry="10.5" fill="#3ddc84" filter="url(#dim)"/>
+    <rect x="382.4" y="305.8" width="45.9" height="5.8" fill="#3ddc84" filter="url(#dim)"/>
+    <ellipse cx="405.3" cy="305.8" rx="22.9" ry="10.5" fill="#3ddc84"/>
+    <ellipse cx="405.3" cy="305.8" rx="11" ry="5.1" fill="#fff" opacity="0.92"/>
+  </g><g>
+    <ellipse cx="512" cy="423.8" rx="29.8" ry="13.7" fill="#ffd23f" filter="url(#dim)"/>
+    <rect x="482.2" y="416.3" width="59.5" height="7.5" fill="#ffd23f" filter="url(#dim)"/>
+    <ellipse cx="512" cy="416.3" rx="29.8" ry="13.7" fill="#ffd23f"/>
+    <ellipse cx="512" cy="416.3" rx="14.3" ry="6.6" fill="#fff" opacity="0.92"/>
+  </g><g>
+    <ellipse cx="688.6" cy="558.9" rx="38" ry="17.5" fill="#ff9b3d" filter="url(#dim)"/>
+    <rect x="650.6" y="549.3" width="75.9" height="9.6" fill="#ff9b3d" filter="url(#dim)"/>
+    <ellipse cx="688.6" cy="549.3" rx="38" ry="17.5" fill="#ff9b3d"/>
+    <ellipse cx="688.6" cy="549.3" rx="18.2" ry="8.4" fill="#fff" opacity="0.92"/>
+  </g><g>
+    <ellipse cx="402.6" cy="708.4" rx="47" ry="21.6" fill="#ff4d5e" filter="url(#dim)"/>
+    <rect x="355.6" y="696.5" width="94.1" height="11.9" fill="#ff4d5e" filter="url(#dim)"/>
+    <ellipse cx="402.6" cy="696.5" rx="47" ry="21.6" fill="#ff4d5e"/>
+    <ellipse cx="402.6" cy="696.5" rx="22.6" ry="10.4" fill="#fff" opacity="0.92"/>
+  </g></g>
+  </g>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="185" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="3"/>
+</svg>

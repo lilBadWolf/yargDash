@@ -1,0 +1,103 @@
+# Release the desktop app: on every push to main whose package.json version hasn't been released yet.
+#
+#   1. prepare  draft a GitHub release v<version> with RELEASE.md as its notes (or reuse the draft of a failed run)
+#   2. build    build on macOS, Windows and Linux; electron-builder uploads the installers to the draft
+#   3. publish  publish the release once every build has succeeded (this also creates the tag)
+#
+# To release: bump "version" in package.json, write RELEASE.md, push to main.
+# Pushes that don't change the version do nothing here. Run it by hand from the Actions tab to retry.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      skip: ${{ steps.version.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version and whether it's released
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          draft=$(gh release view "v$v" --json isDraft -q .isDraft 2>/dev/null || echo none)
+          if [ "$draft" = "false" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$v is already released. Bump the version in package.json to release again."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Draft the release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          if [ ! -f RELEASE.md ]; then echo "::error::RELEASE.md (the release notes) is missing"; exit 1; fi
+          if gh release view "v$V" >/dev/null 2>&1; then
+            # a draft from an earlier run that failed: new notes, and drop what it uploaded
+            gh release edit "v$V" --title "yargDash v$V" --notes-file RELEASE.md --target "$GITHUB_SHA"
+            gh release view "v$V" --json assets -q '.assets[].name' | while read -r a; do [ -n "$a" ] && gh release delete-asset "v$V" "$a" -y; done
+          else
+            gh release create "v$V" --draft --title "yargDash v$V" --notes-file RELEASE.md --target "$GITHUB_SHA"
+          fi
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.skip == 'false'
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Import the macOS signing certificate (see scripts/sign-mac.cjs)
+        if: runner.os == 'macOS' && env.MAC_CERT_P12 != ''
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"; KP=$(openssl rand -hex 16)
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          echo "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: Build and upload to the draft release
+        run: npm run dist -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ needs.prepare.outputs.version }}" --draft=false --latest --repo "${{ github.repository }}"

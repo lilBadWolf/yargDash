@@ -14,3 +14,6 @@ Thumbs.db
 
 # YARG launcher build output
 yarg/build/
+
+# desktop app packages (npm run dist)
+release/

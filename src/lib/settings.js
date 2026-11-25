@@ -15,6 +15,8 @@ const defaults = {
   lanesSpeed: 1,                 // lanes: note speed on this device (1 = 1.6 s from the far end to the strike line)
   lanesHidden: [],               // lanes: parts not shown on this device (guitar | rhythm | bass | drums | keys)
   mode: 'lyrics',                // dashboard: lyrics | tab | lanes | click, last picked on this device
+  libSort: 'artist',             // library: artist | title | added | played | year | length
+  libFilter: 'all',              // library: all | tab | notab | pro | harmonies | keys | played | unplayed
 };
 
 let saved = {};
