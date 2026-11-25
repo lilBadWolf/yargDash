@@ -1,29 +1,21 @@
-## 🎹 yargDash 1.2.0: Keys!
+## 🎸 yargDash 1.2.1
 
-A new view for the keyboard player: the song's keyboard part falls onto piano keys in time with the song, Synthesia-style ✨
+A few things to make building your tab library easier 📚
 
 ### 🆕 What's new
 
-- 🎹 **Keys view**: notes fall onto the keys that play them, and each key lights up while its note sounds (right hand teal, left hand purple). The keyboard spans the part's range, with note names on the notes and keys and the chord name when there is one. 🐢 / 🐇 set the speed, and the QR button opens it on a tablet on the keyboard stand 📱
-  - Songs whose chart has **Pro Keys** have it automatically, with Rock Band's 17-key window marked as it moves.
-  - **Guitar Pro files**: their piano, organ and synth parts show here, lined up with the song like the tabs. One file can give you several (Rosanna: piano, two organs, synths 🎶).
-- 🎸 **Tabs**: keyboard parts no longer show up as nonsense guitar tab. Anything tabbed on 4 or 5 strings is a bass tab, even a synth bass (it shows in Keys too).
-- 📚 **Library filters**: *Pro Guitar*, *Pro Bass* and *Pro Keys* (in the chart) replace *Pro parts*, and *Keys* finds songs whose Guitar Pro file has a keyboard part. Those songs get a **KEYS** badge.
-- 📏 **Tidier controls**: when the view and track buttons don't fit on one line (phones, songs with lots of tracks), they turn into dropdowns.
-
-### 🛠️ Fixes
-
-- 💥 A Guitar Pro file whose repeats confuse the file reader could freeze yargDash and crash it over and over. Now that file just plays without its repeats.
-- 🤘 Songs whose names have special characters (like YARG's `AC／DC` folders) weren't recognised in the menu on macOS, so their tabs weren't picked up.
-- 🔎 A downloaded tab is matched more often: "Runnin'" and "Running" count as the same title, and when the title inside the file has a typo, the file name is used.
+- 🔎 **Find tabs from the Library**: in *Needs a tab*, every song has a **Find** button. It opens Ultimate Guitar's search for that song, and a Guitar Pro file you download is added to it by itself. (On the YARG computer.)
+- ➕ **Guitar Pro files for songs with Pro charts**: a song whose chart has Pro Guitar, Pro Bass or Pro Keys can get a Guitar Pro file too, and its tracks show next to the chart's. The Tab and Keys views have **Find tab** and **+ Guitar Pro file** for them.
+- 📚 *Has tab* and *Needs a tab* are now about Guitar Pro files, so songs with Pro charts show up in *Needs a tab* until they have one. The *Pro Guitar*, *Pro Bass* and *Pro Keys* filters still find the chart tabs.
+- 💾 **Tab library in Settings**: see where your tabs are kept and open the folder (or the data folder) with one click. Copy or zip it to back up your tabs; copy it back to restore them.
 
 ### ⬇️ Download
 
 | | |
 |---|---|
-| 🍎 macOS, Apple Silicon | `yargDash-1.2.0-mac-arm64.dmg` |
-| 🍏 macOS, Intel | `yargDash-1.2.0-mac-x64.dmg` |
-| 🪟 Windows | `yargDash-Setup-1.2.0.exe` |
+| 🍎 macOS, Apple Silicon | `yargDash-1.2.1-mac-arm64.dmg` |
+| 🍏 macOS, Intel | `yargDash-1.2.1-mac-x64.dmg` |
+| 🪟 Windows | `yargDash-Setup-1.2.1.exe` |
 | 🐧 Linux | `.AppImage` (updates itself) or `.deb` |
 
 Windows and Linux (AppImage) update themselves. On macOS, install the new version over the old one; your tabs and settings stay.

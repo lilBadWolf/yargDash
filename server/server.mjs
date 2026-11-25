@@ -23,6 +23,7 @@
 //   POST /yarg/tab/tuning {track, tuning:[midi…]|null}  set a track's tuning for this song (null = as the chart/file says)
 //   POST /yarg/tab/find                                 open the Ultimate Guitar search for the song in this computer's browser (this computer only)
 //   POST /restart                                       start a fresh copy of the server and exit (this computer only)
+//   POST /folder/open     {which:'tabs'|'data'}             show the tab library / data folder in Finder/Explorer (this computer only)
 //   POST /yarg/start      {app?:'/path/YARG.app', restart?:true}  macOS: start YARG with its data stream working (this computer only)
 //   GET  /library                                       every song in YARG's song folders (see library.mjs)
 //   POST /library/rescan                                look through the song folders again
@@ -169,7 +170,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   // name/version: how other programs on this computer (e.g. Live Console's bridge) recognise a running yargDash
-  if (url.pathname === '/status') return json(200, { name: 'yargDash', version: VERSION, app: !!process.env.YARGDASH_APP, config, clients: clients.size, lan: lanIps(), code: CODE_HASH, pid: process.pid, data: DATA_DIR });
+  if (url.pathname === '/status') return json(200, { name: 'yargDash', version: VERSION, app: !!process.env.YARGDASH_APP, config, clients: clients.size, lan: lanIps(), code: CODE_HASH, pid: process.pid, data: DATA_DIR, tabsDir: path.join(DATA_DIR, 'tabs') });
   if (url.pathname === '/yarg/lanes') return json(200, yarg.lanes());
   if (url.pathname.startsWith('/yarg/tab/')) {
     try {
@@ -234,6 +235,14 @@ const server = http.createServer(async (req, res) => {
       library.rescan('YARG folder changed');
     }
     if (typeof body.streamLocal === 'boolean') { config.streamLocal = body.streamLocal; saveConfig(); }
+    return res.end('ok');
+  }
+  if (req.method === 'POST' && url.pathname === '/folder/open') {
+    if (!isLocal(req)) { res.statusCode = 403; return res.end('only from the YARG computer'); }
+    const body = await readBody(req);
+    const dir = body.which === 'data' ? DATA_DIR : path.join(DATA_DIR, 'tabs');
+    fs.mkdirSync(dir, { recursive: true });
+    openUrl(dir);
     return res.end('ok');
   }
   if (req.method === 'POST' && url.pathname === '/restart') {

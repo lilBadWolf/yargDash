@@ -1,7 +1,7 @@
 <script setup>
 // YARG's songs: search, filter and sort; tap a song for what's in it and its tab (SongModal).
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import { library, loadLibrary, rescanLibrary, artUrl, INSTRUMENTS, ROW_PARTS, TIER, fmtLength } from '../lib/library.js';
+import { library, loadLibrary, rescanLibrary, findSongTab, artUrl, INSTRUMENTS, ROW_PARTS, TIER, fmtLength } from '../lib/library.js';
 import { yarg } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 import { openModal } from '../lib/modal.js';
@@ -24,8 +24,9 @@ const hay = computed(() => new Map(library.songs.map((s) => [s.id, norm(`${s.nam
 
 const keep = {
   all: () => true,
-  tab: (s) => !!s.tab,
-  notab: (s) => !s.tab,
+  // a Guitar Pro file or not: a song whose chart has Pro parts can still get one (the Pro filters find those)
+  tab: (s) => s.tab === 'gp',
+  notab: (s) => s.tab !== 'gp',
   proGuitar: (s) => s.parts.proGuitar != null,
   proBass: (s) => s.parts.proBass != null,
   proKeys: (s) => s.parts.proKeys != null,
@@ -70,6 +71,13 @@ watch([q, () => settings.libFilter, () => settings.libSort], () => { limit.value
 const broken = reactive(new Set()); // songs without album art
 const isNow = (s) => yarg.song && yarg.song.name === s.name && yarg.song.artist === s.artist;
 const open = (s) => openModal('song', { id: s.id, preview: s });
+// "Needs a tab": a Find button on each row (on the YARG computer: it opens Ultimate Guitar in its browser, and a
+// matching download is added to that song by itself). The row remembers it was asked, until the tab arrives.
+const finding = reactive(new Map()); // song id -> '' (opened) | error message
+async function findFor(s) {
+  finding.set(s.id, '…');
+  try { await findSongTab(s.id); finding.set(s.id, ''); } catch (e) { finding.set(s.id, e.message || 'failed'); }
+}
 const tierTitle = (s, k) => `${INST[k].label}: ${TIER[s.parts[k]] ?? '?'}${s.parts[PRO_OF[k]] != null ? ` · ${INST[PRO_OF[k]].label} too` : ''}`;
 const starStr = (n) => (n >= 6 ? '★★★★★' : '★'.repeat(Math.max(0, n)) + '☆'.repeat(Math.max(0, 5 - n)));
 const hue = (s) => [...(s.artist || s.name)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
@@ -140,6 +148,10 @@ watch(() => library.version, () => loadLibrary());
             <span v-if="s.tab === 'gp'" class="badge gp" title="Has a Guitar Pro tab">TAB</span>
             <span v-else-if="s.tab === 'pro'" class="badge pro" title="The chart has Pro Guitar/Bass: a tab comes with it">PRO</span>
             <span v-if="s.keysTab" class="badge keys" title="Its Guitar Pro file has a keyboard part: it shows in the Keys view">KEYS</span>
+            <!-- (a span: a button can't sit inside the row's button; the song page has Find tab for keyboard use) -->
+            <span v-if="s.tab !== 'gp' && settings.libFilter === 'notab' && yarg.local" class="findb" :class="{ done: finding.get(s.id) === '', bad: finding.get(s.id) }"
+              :title="finding.has(s.id) ? (finding.get(s.id) || 'Opened Ultimate Guitar: download a Guitar Pro file there and it’s added to this song by itself') : 'Search Ultimate Guitar for this song’s Guitar Pro tabs; a file you download is added by itself'"
+              @click.stop="findFor(s)">{{ finding.get(s.id) === '…' ? '…' : finding.get(s.id) === '' ? '✓' : finding.get(s.id) ? 'Retry' : 'Find' }}</span>
           </div>
           <div class="best">
             <template v-if="s.plays"><span class="stars">{{ starStr(s.stars) }}</span><small>{{ s.plays }} play{{ s.plays === 1 ? '' : 's' }}</small></template>
@@ -195,6 +207,10 @@ watch(() => library.version, () => loadLibrary());
 .badge.gp { background: #10291c; color: var(--ok); }
 .badge.pro { background: #0f2a2a; color: var(--accent); }
 .badge.keys { background: #2a2410; color: #f2d02c; }
+.findb { display: inline-block; min-width: 40px; text-align: center; padding: 5px 7px; border-radius: 8px; border: 1px solid var(--accent); color: var(--accent); font-size: 12px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.findb:hover { background: #3dd6c61a; }
+.findb.done { border-color: var(--line); color: var(--muted); font-weight: 700; }
+.findb.bad { border-color: var(--solo); color: var(--solo); }
 .tab { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .best { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
 .stars { color: var(--solo); font-size: 12px; letter-spacing: 1px; }

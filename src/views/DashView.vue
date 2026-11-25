@@ -238,6 +238,11 @@ function share() {
           <template v-if="yarg.local">
             <button v-if="yarg.tabs?.file && (mode === 'tab' || gpShown)" class="chip" :title="`Replace ${yarg.tabs.file}`" @click="fileInput.click()">Replace file</button>
             <button v-if="yarg.tabs?.file && (mode === 'tab' || gpShown)" class="chip" title="Remove the Guitar Pro file from this song" @click="dropTab">✕</button>
+            <!-- the chart has its own parts (Pro Guitar/Bass/Keys) but no Guitar Pro file yet: one can still be added -->
+            <template v-if="!yarg.tabs?.file && (mode === 'tab' ? tabTrack : keysTrack)">
+              <button class="chip" title="Search Ultimate Guitar for this song's Guitar Pro tabs; a file you download is added by itself" @click="onFindTab">Find tab</button>
+              <button class="chip" title="Add a Guitar Pro file to this song, next to the chart's own parts" @click="fileInput.click()">+ Guitar Pro file</button>
+            </template>
             <input ref="fileInput" type="file" accept=".gp,.gpx,.gp5,.gp4,.gp3" hidden @change="onTabFile" />
           </template>
         </template>

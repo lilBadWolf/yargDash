@@ -13,10 +13,17 @@ const version = __APP_VERSION__;
 
 // server settings shown here (config.json on the server)
 const streamLocal = ref(false);
+const tabsDir = ref(''), dataDir = ref('');
 onMounted(async () => {
   loadLibrary();
-  try { const st = await (await fetch('/status')).json(); streamLocal.value = !!st.config?.streamLocal; yargDir.value = st.config?.yargDir || ''; } catch {}
+  try {
+    const st = await (await fetch('/status')).json();
+    streamLocal.value = !!st.config?.streamLocal; yargDir.value = st.config?.yargDir || '';
+    dataDir.value = st.data || ''; tabsDir.value = st.tabsDir || (st.data ? `${st.data}/tabs` : '');
+  } catch {}
 });
+// show the tab library / data folder on the YARG computer (Finder, Explorer…)
+const openFolder = (which) => post('/folder/open', { which });
 const localMsg = ref('');
 async function saveStreamLocal() {
   await post('/config', { streamLocal: streamLocal.value });
@@ -145,6 +152,21 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
           </div>
         </section>
 
+        <!-- tab library -->
+        <section>
+          <h3><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>Tab library</h3>
+          <p class="hint">Your Guitar Pro files, and each song's bar offset and tunings (<code>index.json</code>), are kept in this folder. To back them up, copy the folder (or zip it). To restore or move them to another computer, copy its contents back while yargDash is closed. Settings and the log are in the data folder, one level up.</p>
+          <ul class="folders">
+            <li><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg><span class="tail" :title="tabsDir">{{ tabsDir ? `\u200e${tabsDir}\u200e` : '…' }}</span></li>
+          </ul>
+          <div v-if="yarg.local" class="row">
+            <span class="sp" />
+            <button @click="openFolder('data')">Open data folder</button>
+            <button class="primary" @click="openFolder('tabs')">Open tab folder</button>
+          </div>
+          <p v-else class="hint">The buttons to open it are in Settings on the YARG computer.</p>
+        </section>
+
         <!-- phones -->
         <section>
           <h3><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>Phones & screens</h3>
@@ -252,6 +274,7 @@ summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted
 .folders li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folders svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linejoin: round; }
 .folders .none { font-family: inherit; color: var(--muted); }
+.folders .tail { direction: rtl; text-align: left; } /* a long path: keep its end (the folder's name) in view */
 
 .share { display: flex; gap: 14px; align-items: center; }
 .qr { flex: none; width: 112px; height: 112px; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: #fff; }

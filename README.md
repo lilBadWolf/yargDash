@@ -83,7 +83,7 @@ yargDash also comes as an app for macOS, Windows and Linux, so you don't need No
 
 🔄 **Updates**: on Windows and with the Linux AppImage, a new version downloads by itself and installs when the app quits (or choose *Restart to update* in its menu). On macOS and with the `.deb`, the app tells you when there's a new version and opens its download page. macOS only lets apps signed with an Apple Developer ID replace themselves.
 
-📁 The app keeps its settings and Guitar Pro files in its own folder (*Show data folder* in its menu), not in `data/`. To bring your tabs over, copy `data/tabs/` and `data/config.json` into that folder while the app is closed. If a server started with `npm start` is already running on the same port, the app uses that one instead.
+📁 The app keeps its settings and Guitar Pro files in its own folder (*Show data folder* in its menu, or *Settings → Tab library*), not in `data/`. To back up your tabs, copy or zip its `tabs` folder; to restore them, copy it back while the app is closed. To bring your tabs over, copy `data/tabs/` and `data/config.json` into that folder while the app is closed. If a server started with `npm start` is already running on the same port, the app uses that one instead.
 
 🛠️ To build it yourself:
 
@@ -115,7 +115,7 @@ Every line of the song with the current one near the top, syllables lighting up 
 
 Guitar and bass tablature in time, laid out in bars like a printed tab, with a cursor and the current row near the top.
 - Songs whose chart has **Pro Guitar/Bass** (Rock Band 3 songs) have it automatically.
-- For any other song, on the YARG computer (these buttons only show there), tap **Find tab** while it's playing. Ultimate Guitar's search for the song's Guitar Pro tabs opens in the browser. Pick one and download it: a Guitar Pro file that lands in *Downloads* and matches the song (by the title in the file, or the file name) is added by itself. Or tap **+ Guitar Pro file** and pick a `.gp`, `.gpx`, `.gp5`, `.gp4` or `.gp3` file. Tabs are kept in `data/tabs/`. Files named `Artist - Title.gp5` dropped in that folder are found too.
+- For any other song, on the YARG computer (these buttons only show there), tap **Find tab** while it's playing. A song with Pro parts can get a Guitar Pro file too: its tracks then show next to the chart's. Ultimate Guitar's search for the song's Guitar Pro tabs opens in the browser. Pick one and download it: a Guitar Pro file that lands in *Downloads* and matches the song (by the title in the file, or the file name) is added by itself. Or tap **+ Guitar Pro file** and pick a `.gp`, `.gpx`, `.gp5`, `.gp4` or `.gp3` file. Tabs are kept in `data/tabs/`. Files named `Artist - Title.gp5` dropped in that folder are found too.
 - A Guitar Pro tab lines up with the song by itself. It works out how the tab's bars relate to the chart's (a 3/4 tab against a 4/4 chart is fine), plays out its repeats, then places it **section by section** by matching its rhythm to the chart's guitar/bass notes and its section names to the chart's. A repeat the tab doesn't write out, an extra chorus or a skipped section only moves the parts after it. The Tab view shows how well it matches and what it adjusted. **Bar offset** nudges everything if needed: « » by a bar, ‹ › by a beat.
 - **Tuning**: Guitar Pro files carry theirs, as do charts that record it. Many converted songs don't: the Tab view then marks the tuning *assumed* (standard) and lets you pick the right one (Drop D, E♭, Drop C…) per song and track. It only relabels the strings and is remembered for every device.
 
@@ -139,7 +139,7 @@ After a song, the band score, stars and each player's result (from YARG's own sc
 
 ### 📚 Library
 
-Every song in the folders YARG reads (YARG's *Settings → Songs*), with album art. Search by title, artist, album, genre or year (press `/` to jump to the search box), filter (*Has tab*, *Needs a tab*, *Pro Guitar*, *Pro Bass* and *Pro Keys* in the chart, *Keys* for a Guitar Pro keyboard part, *Played*…) and sort. Each row shows the song's instruments (a dot marks a Pro part), whether it has a tab, and your best stars. Tap a song to see:
+Every song in the folders YARG reads (YARG's *Settings → Songs*), with album art. Search by title, artist, album, genre or year (press `/` to jump to the search box), filter (*Has tab* / *Needs a tab* for a Guitar Pro file, *Pro Guitar*, *Pro Bass* and *Pro Keys* in the chart, *Keys* for a Guitar Pro keyboard part, *Played*…) and sort. Each row shows the song's instruments (a dot marks a Pro part), whether it has a tab, and your best stars. Tap a song to see:
 - its instruments with YARG's difficulty and note counts, vocal and harmony parts, sections and tempo
 - its tab: the chart's Pro Guitar/Bass, or its Guitar Pro file and **how well that lines up** with the song (and what was adjusted). **Find tab** (on the YARG computer), **+ Guitar Pro file** and **Remove** work here without playing the song, and a downloaded tab is added to it by itself.
 - the band's best score for it
