@@ -25,8 +25,10 @@ A live dashboard for a running [YARG](https://yarg.in) game. Run it on the compu
 | Lyrics with the pitch guide | Tab, lined up with the song |
 |---|---|
 | ![Lyrics view](docs/screenshots/lyrics.png) | ![Tab view](docs/screenshots/tab.png) |
-| **Click for the drummer** | **Performer page on a phone** |
-| ![Click view](docs/screenshots/click.png) | ![Tab performer page on a phone in landscape](docs/screenshots/phone-tab-landscape.png) |
+| **Keys: the part falling onto piano keys** | **Click for the drummer** |
+| ![Keys view: Rosanna's Pro Keys falling onto the keys, with note names and the Pro Keys window](docs/screenshots/keys.png) | ![Click view](docs/screenshots/click.png) |
+| **Tab performer page on a phone** | **Keys performer page on a phone** |
+| ![Tab performer page on a phone in landscape](docs/screenshots/phone-tab-landscape.png) | ![Keys performer page on a phone in landscape: both hands lit, with the keyboard parts to pick from](docs/screenshots/phone-keys-landscape.png) |
 
 ## 🎛️ Real amps and mics too? Meet Live Console
 
