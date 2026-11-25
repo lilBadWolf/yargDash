@@ -16,8 +16,8 @@ jobs:
       MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
       MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -37,7 +37,7 @@ jobs:
       - run: npm run dist -- --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: yargDash-${{ runner.os }}
           path: |
