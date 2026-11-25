@@ -27,6 +27,18 @@ A live dashboard for a running [YARG](https://yarg.in) game. Run it on the compu
 | **Click for the drummer** | **Performer page on a phone** |
 | ![Click view](docs/screenshots/click.png) | ![Tab performer page on a phone in landscape](docs/screenshots/phone-tab-landscape.png) |
 
+## 🎛️ Real amps and mics too? Meet Live Console
+
+If your band plays real instruments alongside YARG, check out yargDash's big sibling, [**Live Console**](https://github.com/lilBadWolf/reaper-xair-live-console). It's for setups where [REAPER](https://www.reaper.fm) runs your amp sims, drum samplers and vocal effects, and a **Behringer X Air** mixer (XR18, X18, XR16, XR12, MR18) is the audio interface and stage mixer. From any phone or tablet you get:
+
+- 🎚️ faders and meters for what the audience hears, and LINE/USB per channel
+- 🎸 effect presets by tapping a name, and whole-song sound recalls with sections (Intro, Verse, Solo…)
+- 📋 songs and setlists
+- 🎧 monitor mixes, and a QR code that gives each musician their own channel on their phone
+- 🎮 a YARG tab with everything yargDash does, plus **auto-loading your sound for the song YARG starts**
+
+🤝 They run side by side: when yargDash is running, Live Console finds it and gets YARG through it, so both show the same song, lanes and tabs.
+
 ## 🧰 Requirements
 
 > [!TIP]
