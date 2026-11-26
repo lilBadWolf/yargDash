@@ -7,6 +7,9 @@ import InstIcon from './InstIcon.vue';
 import { library, fetchSong, findSongTab, removeSongTab, uploadSongTab, artUrl, INSTRUMENTS, TIER, fmtLength } from '../lib/library.js';
 import { yarg, tuningName, fmtTime } from '../lib/yarg.js';
 import { closeModal } from '../lib/modal.js';
+import { practice, startPractice } from '../lib/practice.js';
+import { settings } from '../lib/settings.js';
+import { go } from '../lib/router.js';
 
 const props = defineProps({ id: { type: String, required: true }, preview: { type: Object, default: null } });
 
@@ -75,6 +78,24 @@ async function remove() {
 const best = computed(() => song.value?.best || null);
 const stars = (n) => (n >= 6 ? '★★★★★' : '★'.repeat(Math.max(0, n)) + '☆'.repeat(Math.max(0, 5 - n)));
 const isNow = computed(() => yarg.song && yarg.song.name === s.value.name && yarg.song.artist === s.value.artist);
+// ---------- practice (this computer, YARG not running) ----------
+const yargBusy = computed(() => yarg.detected && !yarg.song?.practice);
+const practisingThis = computed(() => practice.id === props.id);
+async function onPractice() {
+  if (!practisingThis.value) {
+    await startPractice(props.id);
+    if (practice.error) return;
+    // show what there is to play along with: a tab, else a keyboard part
+    const ts = song.value?.tabs?.tracks || [];
+    if (settings.mode === 'lyrics' || settings.mode === 'click') {
+      if (ts.some((t) => t.kind !== 'keys')) settings.mode = 'tab';
+      else if (ts.some((t) => t.kind === 'keys')) settings.mode = 'keys';
+    }
+  }
+  closeModal();
+  go('dash');
+}
+
 const facts = computed(() => [
   ['Album', s.value.album], ['Year', s.value.year], ['Genre', s.value.genre], ['Charter', s.value.charter],
   ['Length', fmtLength(s.value.length)], ['Tempo', song.value?.chart?.bpm ? `~${song.value.chart.bpm} BPM` : ''],
@@ -95,6 +116,13 @@ const facts = computed(() => [
             <template v-for="[k, v] in facts" :key="k"><dt>{{ k }}</dt><dd>{{ v }}</dd></template>
           </dl>
           <p v-if="song?.loading" class="quote">“{{ song.loading }}”</p>
+          <div v-if="yarg.local" class="practice">
+            <button class="btn primary" :disabled="yargBusy || practice.loading" :title="yargBusy ? 'Close YARG to practise here' : 'Play the song here and follow its tabs and charts on every device'" @click="onPractice">
+              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>{{ practice.loading ? 'Loading…' : practisingThis ? 'Back to practice' : 'Practice' }}
+            </button>
+            <span v-if="yargBusy" class="muted small">Close YARG to practise here.</span>
+            <span v-else-if="practice.error" class="error small">{{ practice.error }}</span>
+          </div>
         </div>
       </div>
 
@@ -218,6 +246,8 @@ const facts = computed(() => [
 dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 0; font-size: 14px; }
 dt { color: var(--muted); } dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quote { margin: 2px 0 0; font-size: 13px; font-style: italic; color: var(--muted); line-height: 1.45; }
+.practice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }
+.practice .btn svg { fill: currentColor; stroke: none; }
 section { display: flex; flex-direction: column; gap: 10px; }
 h3 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 h3 small { font-weight: 600; letter-spacing: 0; text-transform: none; margin-left: 6px; }

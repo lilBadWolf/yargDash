@@ -13,6 +13,7 @@ A live dashboard for a running [YARG](https://yarg.in) game. Run it on the compu
 - 🥁 **Click**: a big beat counter for the drummer
 - 🏆 **Scores**: the band's result after each song, and your best during it
 - 📚 **Library**: browse and search every song, see what's in it and whether its tab lines up
+- 🎧 **Practice**: play any song's audio on the YARG computer while YARG is closed, and follow its tabs and charts: loop a section, slow it down, mute your part
 - 📱 **Performer pages**: a QR code opens any of these on a phone with no controls
 
 ✨ It doesn't change YARG. It reads the song YARG is playing and the song file itself, and follows YARG's UDP data stream for timing. Works on macOS, Windows and Linux.
@@ -148,6 +149,16 @@ Every song in the folders YARG reads (YARG's *Settings → Songs*), with album a
 
 `.sng` files and song folders with a `song.ini` are listed. Rock Band CON packs aren't. The list is rechecked every 10 minutes, or tap ⟳.
 
+### 🎧 Practice
+
+When YARG isn't running, a song in the Library has a ▶️ **Practice** button (on the YARG computer). It plays the song's own audio there and makes it the song shown, so the Tab, Keys and Lyrics views (and any performer page on a phone) follow it as if YARG were playing it. The Dashboard gets a transport bar:
+- ⏯️ play/pause and seek (`Space` plays/pauses, `←` `→` skip 5 s)
+- 🔁 jump to a section, or loop it
+- 🐢 slow down to 50% (or up to 125%) without changing the pitch
+- 🔇 mute any of the song's stems (Guitar, Bass, Drums, Vocals…) to play that part yourself
+
+Lanes and Click are hidden while practising. Starting YARG ends practice. The audio comes from the song's stems (`song.ogg`, `guitar.opus`… in its folder or `.sng`); encrypted `.mogg` audio can't be played.
+
 ### 🎵 Menu music (macOS/Linux)
 
 The song YARG plays in its menus shows too, with its lyrics. They follow the song when yargDash is sure it started from the top: when it follows the previous menu song, or is the first after YARG starts, or when you tap *Follow it*. YARG doesn't report pausing or skipping the menu music, so tap *Stop following* if you do.
@@ -165,6 +176,7 @@ The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/
 - 💿 **Song**: YARG writes the song it's playing to `currentSong.json` in its data folder. The server reads everything else straight from the song file (`.sng`, or a folder with `notes.mid` / `notes.chart`): lyrics and vocal notes, sections, the beat grid, every instrument part, and Pro Guitar/Bass.
 - ⏱️ **Timing**: YARG doesn't broadcast its playback position, so the server works it out from the data stream. The clock starts at the chart's first tempo marker, stops while YARG is paused, and lines up with every bar line YARG reports (picking up song speed too). Each page runs the clock locally between updates.
 - 🎵 **Menu music**: the file YARG has open, and when it started (YARG's log).
+- 🎧 **Practice**: the page on the YARG computer plays the song's stems (served from the song file) and reports where it is; that drives the clock instead of YARG.
 - 🏆 **Scores**: YARG's own scores database.
 
 | File | |
@@ -173,7 +185,7 @@ The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/
 | `server/yarg.mjs` | follows YARG: song, charts, data stream, clock, scores, menu music |
 | `server/tabs.mjs` | Pro Guitar tabs, Guitar Pro files, lining them up, the Downloads watcher |
 | `server/lanes.mjs` | the Lanes view's notes for every part |
-| `server/library.mjs` | the Library: YARG's song folders, each song's details and album art |
+| `server/library.mjs` | the Library: YARG's song folders, each song's details, album art and audio stems (for practice) |
 | `src/` | the page (Vue 3), built into one self-contained `dist/index.html` |
 | `scripts/start.mjs` | `npm start`: build if needed, start or restart the server |
 | `electron/` | the desktop app: window, tray, updates |

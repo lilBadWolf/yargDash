@@ -15,7 +15,9 @@
 //  * Also:   BPM, pause state, whether YARG is running (the YARG tab only shows then), YARG's scores,
 //            and claims (a device asking to do something once per play).
 //
-// Exports createYarg({ log, broadcast, getDir, tabs }) -> { snapshot(), lanes(), setDir(), claim(key), confirmMenu(on), close() }
+// Exports createYarg({ log, broadcast, getDir, tabs }) -> { snapshot(), lanes(), setDir(), claim(key), confirmMenu(on),
+//   startPractice(entry), practiceClock({state, t, rate}), stopPractice(), close() }
+//   Practice: a library song played on this computer while YARG isn't running; the player's audio drives the clock.
 // SSE messages: yarg {yarg: snapshot}, yargClock {clock}, yargBeat {k: 0 bar | 1 strong | 2 weak}
 
 import dgram from 'node:dgram';
@@ -43,29 +45,54 @@ export function defaultYargDirs() {
 // ---------------------------------------------------------------------------
 // .sng container (https://github.com/mdsitton/SngFileFormat): read just the file we need
 // ---------------------------------------------------------------------------
+const sngRead = (fd, pos, len) => { const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, pos); return b; };
+// the file index of an open .sng: { mask, files: [{ name (lower case), len, at }] }
+function sngIndexOf(fd) {
+  const head = sngRead(fd, 0, 26);
+  if (head.toString('latin1', 0, 6) !== 'SNGPKG') throw new Error('not an .sng file');
+  const mask = head.subarray(10, 26);
+  let pos = 26;
+  pos += 8 + Number(sngRead(fd, pos, 8).readBigUInt64LE()); // skip metadata section
+  const idxLen = Number(sngRead(fd, pos, 8).readBigUInt64LE());
+  const idx = sngRead(fd, pos + 8, idxLen);
+  const count = Number(idx.readBigUInt64LE(0));
+  const files = [];
+  let o = 8;
+  for (let i = 0; i < count; i++) {
+    const n = idx[o]; const name = idx.toString('utf8', o + 1, o + 1 + n); o += 1 + n;
+    files.push({ name: name.toLowerCase(), len: Number(idx.readBigUInt64LE(o)), at: Number(idx.readBigUInt64LE(o + 8)) });
+    o += 16;
+  }
+  return { mask, files };
+}
+// bytes [start, end] of one file in an open .sng, unmasked
+function sngSlice(fd, mask, f, start, end) {
+  const data = sngRead(fd, f.at + start, end - start + 1);
+  for (let j = 0, k = start; j < data.length; j++, k++) data[j] ^= mask[k & 15] ^ (k & 0xff);
+  return data;
+}
 export function readSngFiles(file, wanted) {
   const fd = fs.openSync(file, 'r');
   try {
-    const rd = (pos, len) => { const b = Buffer.alloc(len); fs.readSync(fd, b, 0, len, pos); return b; };
-    const head = rd(0, 26);
-    if (head.toString('latin1', 0, 6) !== 'SNGPKG') throw new Error('not an .sng file');
-    const mask = head.subarray(10, 26);
-    let pos = 26;
-    pos += 8 + Number(rd(pos, 8).readBigUInt64LE()); // skip metadata section
-    const idxLen = Number(rd(pos, 8).readBigUInt64LE());
-    const idx = rd(pos + 8, idxLen);
-    const count = Number(idx.readBigUInt64LE(0));
+    const { mask, files: list } = sngIndexOf(fd);
     const files = new Map();
-    let o = 8;
-    for (let i = 0; i < count; i++) {
-      const n = idx[o]; const name = idx.toString('utf8', o + 1, o + 1 + n); o += 1 + n;
-      const len = Number(idx.readBigUInt64LE(o)); const at = Number(idx.readBigUInt64LE(o + 8)); o += 16;
-      if (!wanted.includes(name.toLowerCase())) continue;
-      const data = rd(at, len);
-      for (let j = 0; j < data.length; j++) data[j] ^= mask[j & 15] ^ (j & 0xff);
-      files.set(name.toLowerCase(), data);
-    }
+    for (const f of list) if (wanted.includes(f.name)) files.set(f.name, sngSlice(fd, mask, f, 0, f.len - 1));
     return files;
+  } finally { fs.closeSync(fd); }
+}
+// The files in an .sng: [{ name, len }]
+export function listSngFiles(file) {
+  const fd = fs.openSync(file, 'r');
+  try { return sngIndexOf(fd).files.map(({ name, len }) => ({ name, len })); } finally { fs.closeSync(fd); }
+}
+// Bytes [start, end] of one file in an .sng
+export function readSngRange(file, name, start, end) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const { mask, files } = sngIndexOf(fd);
+    const f = files.find((x) => x.name === name);
+    if (!f) throw new Error(`${name} isn't in the .sng`);
+    return sngSlice(fd, mask, f, start, Math.min(end, f.len - 1));
   } finally { fs.closeSync(fd); }
 }
 
@@ -532,7 +559,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
   let lastBar = null; // { t, w } last matched bar line, for measuring playback speed
   const wall = () => performance.now() / 1000;
   const songTime = (w = wall()) => (clock.state === 'run' ? clock.t0 + (w - clock.w0) * clock.rate : clock.t0);
-  const clockMsg = () => ({ state: clock.state, t: Math.round(songTime() * 1000) / 1000, rate: clock.rate, stream: stream.live, scene: stream.scene, bpm: Math.round(stream.bpm), paused: stream.paused === 2, play, menu: clock.menu });
+  const clockMsg = () => ({ state: clock.state, t: Math.round(songTime() * 1000) / 1000, rate: clock.rate, stream: stream.live, scene: stream.scene, bpm: Math.round(stream.bpm), paused: stream.paused === 2, play, menu: clock.menu, practice: !!song?.practice });
   const newPlay = () => { play++; claims.clear(); };
   const sendClock = () => broadcast({ type: 'yargClock', clock: clockMsg() });
   function setClock(state, t, w = wall()) {
@@ -542,6 +569,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
 
   function onPacket(b) {
     if (b.length < 39 || b.readUInt32LE(0) !== 0x59415247) return;
+    if (song?.practice) stopPractice('YARG is running');
     const w = wall();
     const scene = SCENE[b[6]] || 'unknown', paused = b[7], bpm = b.readFloatLE(9), beat = b[38];
     const prev = stream;
@@ -618,25 +646,28 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     if (stream.live && wall() - stream.at > 2) {
       stream.live = false;
       log('YARG data stream: stopped');
-      if (!clock.menu) {
+      if (!clock.menu && !song?.practice) {
         if (clock.state === 'run') clock.t0 = songTime();
         clock.state = 'off';
       }
       setDetected();
       sendClock();
     }
+    // practice: the player stopped reporting (its page closed or hung): hold the song where it was
+    if (song?.practice && clock.state === 'run' && wall() - practiceAt > 4) setClock('pause', songTime());
   }, 1000);
 
   // ---------- is YARG running? ----------
   let running = false, detected = false, checkedOnce = false;
   function setDetected() {
-    const d = running || stream.live || !!song;
+    const d = running || stream.live || (!!song && !song.practice);
     if (d !== detected) { detected = d; broadcast({ type: 'yarg', yarg: info() }); }
   }
   function checkProcess() {
     const done = (err, out) => {
       const was = running;
       running = !err && /\S/.test(out) && !/No tasks/i.test(out);
+      if (running && song?.practice) stopPractice('YARG started');
       setDetected();
       if (was && !running) pollMenuSong(); // clears the menu song
       if (!was && running && checkedOnce) launchFresh = true; // we saw YARG start: its first menu song starts from the top
@@ -667,14 +698,20 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     let entry = null;
     if (raw) { try { entry = JSON.parse(raw); } catch { lastRaw = null; return; } } // half-written: retry next poll
     if (!entry) {
-      if (song) { song = null; lyrics = null; songLanes = null; measures = []; results = { ...results, best: null }; tabs?.setSong(null); broadcast({ type: 'yarg', yarg: info() }); setDetected(); pollMenuSong(); }
+      if (song && !song.practice) { song = null; lyrics = null; songLanes = null; measures = []; results = { ...results, best: null }; tabs?.setSong(null); broadcast({ type: 'yarg', yarg: info() }); setDetected(); pollMenuSong(); }
       return;
     }
     const strip = (s) => String(s ?? '').replace(/<[^>]*>/g, '');
     const next = { name: strip(entry.Name), artist: strip(entry.Artist), album: strip(entry.Album), charter: strip(entry.Charter),
       year: strip(entry.ParsedYear), length: (Number(entry.SongLengthMilliseconds) || 0) / 1000, location: entry.ActualLocation || '' };
-    if (song && next.location === song.location && next.name === song.name) return;
-    song = next;
+    if (song && !song.practice && next.location === song.location && next.name === song.name) return;
+    if (song?.practice) { log(`Practice: ${song.name} stopped (YARG started a song)`); clock.state = 'off'; clock.rate = 1; }
+    setSong(next, 'YARG');
+  }
+
+  // Make `s` the song shown: read its chart, hand it to the tabs, tell every device.
+  function setSong(s, who) {
+    song = s;
     menuSong = null; menuPlay = null; menuLyrics = null;
     if (clock.menu) { clock.menu = false; clock.state = 'off'; }
     newPlay();
@@ -686,17 +723,50 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
       songLanes = l.lanes || null;
       tabs?.setSong({ name: song.name, artist: song.artist }, l);
       const n = Object.entries(l.parts).map(([k, v]) => `${k} ${v.phrases.length}`).join(', ');
-      log(`YARG: ${song.artist} - ${song.name} (${n || 'no vocals'})`);
+      log(`${who}: ${song.artist} - ${song.name} (${n || 'no vocals'})`);
     } catch (e) {
       measures = [];
       songLanes = null;
       lyrics = { error: e.message };
       tabs?.setSong({ name: song.name, artist: song.artist }, null);
-      log(`YARG: ${song.artist} - ${song.name}: no lyrics (${e.message})`);
+      log(`${who}: ${song.artist} - ${song.name}: no lyrics (${e.message})`);
     }
     readScores(false);
     broadcast({ type: 'yarg', yarg: info() });
     setDetected();
+  }
+
+  // ---------- practice (YARG not running) ----------
+  // A library song played by a page on this computer (src/lib/practice.js): it's the song shown, and the page's
+  // audio drives the clock (practiceClock). Ends when asked, or when YARG starts.
+  let practiceAt = 0; // wall time of the player's last report
+  function startPractice(entry) {
+    if (running || stream.live) throw new Error('YARG is running: close it to practise here');
+    clock.rate = 1; clock.state = 'pause'; clock.t0 = 0; clock.w0 = wall();
+    practiceAt = wall();
+    setSong({ name: entry.name, artist: entry.artist, album: entry.album, charter: entry.charter, year: entry.year,
+      length: entry.length, location: entry.location, practice: true, id: entry.id }, 'Practice');
+    sendClock();
+  }
+  function stopPractice(why = '') {
+    if (!song?.practice) return false;
+    log(`Practice: stopped ${song.name}${why ? ` (${why})` : ''}`);
+    song = null; lyrics = null; songLanes = null; measures = [];
+    results = { ...results, best: null };
+    tabs?.setSong(null);
+    clock.rate = 1;
+    setClock('off', 0);
+    broadcast({ type: 'yarg', yarg: info() });
+    setDetected();
+    return true;
+  }
+  // the player says where it is: { state: 'run' | 'pause', t (song s), rate }
+  function practiceClock({ state, t, rate }) {
+    if (!song?.practice || !['run', 'pause'].includes(state) || !Number.isFinite(t)) return false;
+    practiceAt = wall();
+    const r = Math.min(2, Math.max(0.25, Number(rate) || 1));
+    if (state !== clock.state || Math.abs(r - clock.rate) > 0.001 || Math.abs(t - songTime()) > 0.02) { clock.rate = r; setClock(state, t); }
+    return true;
   }
 
   // ---------- menu music (macOS/Linux) ----------
@@ -913,6 +983,9 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
       return { song: s ? { name: s.name, artist: s.artist } : null, lanes: (song ? songLanes : menuLanes) || {} };
     },
     setDir() { watch(); readScores(true); broadcast({ type: 'yarg', yarg: info() }); },
+    // practice a library song (entry from library.meta) without YARG
+    startPractice, stopPractice, practiceClock,
+    practiceId: () => (song?.practice ? song.id : null),
     // YARG's data folder (settings.json, scores/): the one with currentSong.json
     dataDir: () => (watchedFile ? path.dirname(watchedFile) : null),
     // Every song's plays and best band result, for the library: { `${name}\n${artist}`: { plays, score, stars } }

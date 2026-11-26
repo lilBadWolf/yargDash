@@ -11,15 +11,19 @@ import LanesPanel from '../components/LanesPanel.vue';
 import KeysPanel from '../components/KeysPanel.vue';
 import SegPick from '../components/SegPick.vue';
 import StartYarg from '../components/StartYarg.vue';
+import PracticeBar from '../components/PracticeBar.vue';
+import { practice } from '../lib/practice.js';
 import { conn } from '../lib/conn.js';
 import { yarg, songTime, synced, fmtTime, partKeys, partKey, PART_LABELS, sectionIndexAt, STAR_LABEL, shownSong, confirmMenu, tabTrackId, keysTracks, keysTrackId, uploadTab, findTab, setTabOffset, removeTab, setTabTuning, TUNINGS, tuningName, tuningNotes } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
-import { route } from '../lib/router.js';
+import { route, go } from '../lib/router.js';
 import { openModal } from '../lib/modal.js';
 import { fitRow } from '../lib/fit.js';
 
 const stage = computed(() => route.artist);
-const mode = computed(() => route.mode || settings.mode);
+// practice has no Lanes or Click: those fall back to the tab (performer pages keep the view in their link)
+const PRACTICE_HIDDEN = ['lanes', 'click'];
+const mode = computed(() => route.mode || (yarg.song?.practice && PRACTICE_HIDDEN.includes(settings.mode) ? 'tab' : settings.mode));
 const part = computed(() => partKey(route.part));
 const parts = computed(() => partKeys());
 const hasNotes = computed(() => (yarg.lyrics?.parts?.[part.value]?.notes || []).length > 0);
@@ -42,6 +46,7 @@ const nextSec = computed(() => sections.value[secIdx.value + 1] || null);
 
 const status = computed(() => {
   const c = yarg.clock;
+  if (yarg.song?.practice) return c.state === 'run' ? { cls: 'ok', text: 'Practice' } : { cls: 'warn', text: 'Practice · paused' };
   if (!yarg.song) {
     if (menuFollow.value) return { cls: 'ok', text: 'Menu · approx.' };
     return { cls: 'idle', text: yarg.detected ? (yarg.menuSong ? 'Menu' : 'Waiting for a song') : 'YARG not running' };
@@ -53,7 +58,9 @@ const status = computed(() => {
   return { cls: 'idle', text: 'Not synced' };
 });
 const bpm = computed(() => (synced() && yarg.clock.bpm ? yarg.clock.bpm : null));
-const showStreamHint = computed(() => yarg.song && !yarg.clock.stream && !stage.value);
+const showStreamHint = computed(() => yarg.song && !yarg.song.practice && !yarg.clock.stream && !stage.value);
+// this page plays the practice audio: it gets the transport
+const practising = computed(() => !!practice.id && !!yarg.song?.practice && !stage.value);
 
 
 // ---------- scores ----------
@@ -69,6 +76,7 @@ const ago = (ms) => {
 
 // the controls row: its pickers turn into dropdowns when they'd wrap it (the track picker first, then the views)
 const VIEWS = [{ value: 'lyrics', label: 'Lyrics' }, { value: 'tab', label: 'Tab' }, { value: 'lanes', label: 'Lanes' }, { value: 'keys', label: 'Keys' }, { value: 'click', label: 'Click' }];
+const views = computed(() => (yarg.song?.practice ? VIEWS.filter((v) => !PRACTICE_HIDDEN.includes(v.value)) : VIEWS));
 const row = ref(null), trackPick = ref(null), viewPick = ref(null);
 const compact = fitRow(row, () => [['track', trackPick.value], ['view', viewPick.value]]);
 const opts = (ts) => ts.map((t) => ({ value: t.id, label: t.name, title: `${t.count} notes` }));
@@ -155,7 +163,7 @@ function share() {
         </div>
         <template v-if="yarg.song">
           <div class="title">{{ yarg.song.name }}</div>
-          <div class="sub">{{ [yarg.song.artist, yarg.song.album, yarg.song.year].filter(Boolean).join(' · ') }}</div>
+          <div class="sub">{{ [yarg.song.artist, yarg.song.album, yarg.song.year].filter(Boolean).join(' · ') }}<template v-if="yarg.song.practice && !practising"> — practising on the YARG computer</template></div>
         </template>
         <template v-else-if="yarg.menuSong">
           <div class="title menu"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>{{ yarg.menuSong.name }}</div>
@@ -169,7 +177,7 @@ function share() {
           <div class="title">Nothing playing</div>
           <div class="sub">Start a song in YARG and its lyrics appear here.</div>
         </template>
-        <div v-if="cur && synced()" class="prog">
+        <div v-if="cur && synced() && !practising" class="prog">
           <span class="tm">{{ fmtTime(now) }}</span>
           <div class="bar"><i :style="{ transform: `scaleX(${progress})` }" /></div>
           <span class="tm">{{ fmtTime(length) }}</span>
@@ -199,9 +207,11 @@ function share() {
       </div>
     </div>
 
+    <PracticeBar v-if="practising" />
+
     <!-- mode / part / pitch / tab controls -->
     <div v-if="cur || !stage" ref="row" class="bar2">
-      <SegPick v-if="!route.mode" ref="viewPick" :options="VIEWS" :model-value="mode" :compact="compact.view" label="View" @update:model-value="settings.mode = $event" />
+      <SegPick v-if="!route.mode" ref="viewPick" :options="views" :model-value="mode" :compact="compact.view" label="View" @update:model-value="settings.mode = $event" />
       <template v-if="mode === 'lyrics' && cur">
         <SegPick v-if="parts.length > 1" ref="trackPick" :options="parts.map((k) => ({ value: k, label: PART_LABELS[k] }))" :model-value="part" :compact="compact.track" label="Part" @update:model-value="pickPart" />
         <button v-if="hasNotes" class="chip" :class="{ on: settings.pitchGuide }" @click="settings.pitchGuide = !settings.pitchGuide">Pitch</button>
@@ -311,6 +321,7 @@ function share() {
         <template v-else>
           <svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
           <p>{{ yarg.detected ? 'Waiting for YARG to start a song…' : 'YARG isn\'t running on this computer.' }}</p>
+          <p v-if="!yarg.detected && yarg.local && !stage" class="small">Want to play along anyway? Pick a song in the <a href="#library" @click.prevent="go('library')">Library</a> and press <b>Practice</b>.</p>
         </template>
       </div>
     </div>

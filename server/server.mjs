@@ -32,6 +32,11 @@
 //   POST /library/tab/find?id=                          "Find tab" for a library song (this computer only)
 //   POST /library/tab/upload?id=&name=  (raw bytes)     attach a Guitar Pro file to a library song
 //   POST /library/tab/remove?id=                        detach (delete) a library song's Guitar Pro file
+//   GET  /library/stem?id=&name=guitar.ogg              one of a song's audio stems, in byte ranges (this computer only)
+//   POST /practice/start  {id}                          practise a library song while YARG isn't running: it becomes the song shown,
+//                                                       -> { stems: [{ name, size }], delay }   (this computer only)
+//   POST /practice/clock  {state:'run'|'pause', t, rate} the practice player's position (this computer only)
+//   POST /practice/stop                                 stop practising (this computer only)
 //
 // The desktop app (electron/main.mjs) runs this same file with YARGDASH_APP=1 and its own --data folder.
 
@@ -190,6 +195,27 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(400, { error: e.message }); }
     return json(404, { error: 'not found' });
   }
+  if (url.pathname === '/library/stem') {
+    if (!isLocal(req)) return json(403, { error: 'Only from the YARG computer' });
+    try {
+      const st = library.stem(url.searchParams.get('id') || '', url.searchParams.get('name') || '');
+      if (!st) return json(404, { error: 'no such stem' });
+      let start = 0, end = st.size - 1;
+      const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+      if (m) {
+        if (m[1] === '') start = Math.max(0, st.size - Number(m[2]));
+        else { start = Number(m[1]); if (m[2] !== '') end = Math.min(end, Number(m[2])); }
+        if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+      }
+      res.writeHead(m ? 206 : 200, { 'Content-Type': st.type, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache',
+        ...(m ? { 'Content-Range': `bytes ${start}-${end}/${st.size}` } : {}) });
+      if (req.method === 'HEAD') return res.end();
+      const body = await st.read(start, end);
+      if (Buffer.isBuffer(body)) return res.end(body);
+      body.on('error', () => res.destroy());
+      return body.pipe(res);
+    } catch (e) { return json(400, { error: e.message }); }
+  }
   if (url.pathname === '/library' || url.pathname.startsWith('/library/')) {
     try {
       if (url.pathname === '/library') return json(200, library.list());
@@ -215,6 +241,23 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/library/tab/upload') return json(200, { file: await tabs.upload(url.searchParams.get('name') || '', await readRaw(req), who) });
       if (url.pathname === '/library/tab/remove') return json(200, { ok: tabs.remove(who) });
     } catch (e) { return json(400, { error: e.message }); }
+    return json(404, { error: 'not found' });
+  }
+  if (req.method === 'POST' && url.pathname.startsWith('/practice/')) {
+    if (!isLocal(req)) return json(403, { error: 'Practice plays on the YARG computer' });
+    const b = await readBody(req);
+    try {
+      if (url.pathname === '/practice/start') {
+        const e = library.meta(String(b.id || ''));
+        if (!e) return json(404, { error: 'no such song' });
+        const st = library.stems(e.id);
+        if (!st.stems.length) return json(409, { error: 'This song has no audio yargDash can play' });
+        yarg.startPractice(e);
+        return json(200, st);
+      }
+      if (url.pathname === '/practice/clock') return json(200, { ok: yarg.practiceClock(b) });
+      if (url.pathname === '/practice/stop') return json(200, { ok: yarg.stopPractice() });
+    } catch (e) { return json(409, { error: e.message }); }
     return json(404, { error: 'not found' });
   }
   if (req.method === 'POST' && url.pathname === '/yarg/start') {

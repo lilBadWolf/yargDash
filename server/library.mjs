@@ -7,11 +7,14 @@
 //  * One song in full (GET /library/song?id=): its chart read for the parts it actually has, vocal parts, sections
 //    and tempo, plus its tabs lined up with the chart (tabs.analyze) and its best score.
 //
-// Exports createLibrary({ dataDir, log, broadcast, yarg, tabs }) -> { list(), song(id), art(id), meta(id), rescan(), close() }
+//  * Practice (YARG not running): a song's audio stems (song.ogg, guitar.ogg, …, or the same inside an .sng), served
+//    in byte ranges so a page's <audio> can seek in them.
+//
+// Exports createLibrary({ dataDir, log, broadcast, yarg, tabs }) -> { list(), song(id), art(id), meta(id), stems(id), stem(id, name), rescan(), close() }
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { songMetadata, loadLyrics, readSngFiles } from './yarg.mjs';
+import { songMetadata, loadLyrics, readSngFiles, listSngFiles, readSngRange } from './yarg.mjs';
 
 // Instruments in a song, from its metadata's difficulty tiers (diff_* = -1 when the part isn't charted).
 const PARTS = [
@@ -35,6 +38,11 @@ export const PART_NAMES = Object.fromEntries(PARTS.map(([k, n]) => [k, n]));
 const strip = (s) => String(s ?? '').replace(/<[^>]*>/g, '').trim();
 const idOf = (loc) => crypto.createHash('sha1').update(loc).digest('hex').slice(0, 16);
 const ART = ['album.png', 'album.jpg', 'album.jpeg'];
+// audio stems, in the order a mixer shows them (preview and crowd aren't the song)
+const AUDIO = /\.(ogg|opus|mp3|wav|flac)$/i;
+const STEM_ORDER = ['song', 'guitar', 'rhythm', 'bass', 'drums', 'keys', 'vocals', 'backing'];
+const stemRank = (n) => { const i = STEM_ORDER.findIndex((k) => n === k || n.startsWith(`${k}_`)); return i < 0 ? STEM_ORDER.length : i; };
+const AUDIO_TYPE = { ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus', mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac' };
 
 function entryFrom(loc, st, meta) {
   const parts = {};
@@ -181,6 +189,33 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
         }
       } catch {}
       return null;
+    },
+    // A song's audio stems and chart offset, for practice: { stems: [{ name, size }], delay (s: audio time of chart time 0) }
+    stems(id) {
+      const e = byId.get(id);
+      if (!e) return null;
+      let files = [];
+      if (/\.sng$/i.test(e.location)) files = listSngFiles(e.location).map((f) => ({ name: f.name, size: f.len }));
+      else {
+        for (const f of fs.readdirSync(e.location)) {
+          try { files.push({ name: f, size: fs.statSync(path.join(e.location, f)).size }); } catch {}
+        }
+      }
+      const base = (n) => n.toLowerCase().replace(AUDIO, '');
+      const stems = files.filter((f) => AUDIO.test(f.name) && !['preview', 'crowd'].includes(base(f.name)) && f.size > 0)
+        .sort((a, b) => stemRank(base(a.name)) - stemRank(base(b.name)) || a.name.localeCompare(b.name));
+      const delay = (Number(songMetadata(e.location).delay) || 0) / 1000;
+      return { stems, delay };
+    },
+    // One stem: { size, type, read(start, end) -> Promise<Buffer | ReadStream> } or null
+    stem(id, name) {
+      const e = byId.get(id);
+      const st = e && this.stems(id)?.stems.find((s) => s.name === name);
+      if (!st) return null;
+      const type = AUDIO_TYPE[name.split('.').pop().toLowerCase()] || 'application/octet-stream';
+      if (/\.sng$/i.test(e.location)) return { size: st.size, type, read: (start, end) => readSngRange(e.location, name, start, end) };
+      const file = path.join(e.location, name);
+      return { size: st.size, type, read: (start, end) => fs.createReadStream(file, { start, end }) };
     },
     close() { clearInterval(timer); },
   };
