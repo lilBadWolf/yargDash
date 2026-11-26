@@ -4,6 +4,7 @@ import { settings, resetSettings } from '../lib/settings.js';
 import { conn, connect, post } from '../lib/conn.js';
 import { yarg } from '../lib/yarg.js';
 import { library, loadLibrary, rescanLibrary } from '../lib/library.js';
+import { encoreStatus } from '../lib/encore.js';
 import { shareHost, pageUrl, qrSvg } from '../lib/qr.js';
 import { go } from '../lib/router.js';
 import logo from '../assets/logo.svg';
@@ -20,7 +21,9 @@ onMounted(async () => {
     const st = await (await fetch('/status')).json();
     streamLocal.value = !!st.config?.streamLocal; yargDir.value = st.config?.yargDir || '';
     dataDir.value = st.data || ''; tabsDir.value = st.tabsDir || (st.data ? `${st.data}/tabs` : '');
+    encoreDir.value = st.config?.encoreDir || '';
   } catch {}
+  loadEncore();
 });
 // show the tab library / data folder on the YARG computer (Finder, Explorer…)
 const openFolder = (which) => post('/folder/open', { which });
@@ -51,6 +54,16 @@ const steps = computed(() => [
   { ok: yarg.detected, title: 'YARG is running', hint: yarg.detected ? '' : 'Start YARG on this computer.', start: !yarg.detected },
   { ok: stream.value, title: 'YARG’s data stream is on', hint: streamHint.value, start: !stream.value && yarg.streamBlocked && mac.value },
 ]);
+
+// Encore downloads: where they go
+const enc = ref(null), encoreDir = ref(''), encMsg = ref('');
+async function loadEncore() { try { enc.value = await encoreStatus(); } catch {} }
+async function applyEncoreDir() {
+  await post('/config', { encoreDir: encoreDir.value });
+  await loadEncore();
+  encMsg.value = encoreDir.value ? 'Saved.' : 'Back to automatic.';
+  setTimeout(() => (encMsg.value = ''), 3000);
+}
 
 const yargDir = ref('');
 const dirMsg = ref('');
@@ -167,6 +180,26 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
           <p v-else class="hint">The buttons to open it are in Settings on the YARG computer.</p>
         </section>
 
+        <!-- Encore downloads -->
+        <section>
+          <h3><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>Encore downloads</h3>
+          <p class="hint">Charts you download from Chorus Encore (Library → Get more from Encore) go into this song folder{{ enc?.downloaded ? ` (${enc.downloaded} so far)` : '' }}. YARG only sees them after you rescan songs in YARG.</p>
+          <ul class="folders">
+            <li><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg><span class="tail" :title="enc?.folder">{{ enc?.folder ? `\u200e${enc.folder}\u200e` : enc ? 'No YARG song folder yet' : '…' }}</span></li>
+          </ul>
+          <p v-if="enc?.folder && !enc.inSongFolders" class="hint warn">This folder isn’t inside one of YARG’s song folders, so YARG and the Library won’t see what you download. Add it in YARG (Settings → Songs) or pick a folder inside one.</p>
+          <div v-if="yarg.local" class="row">
+            <span class="sp" />
+            <button :disabled="!enc?.folder" @click="openFolder('encore')">Open folder</button>
+          </div>
+          <details v-if="yarg.local">
+            <summary>Download somewhere else</summary>
+            <p class="hint">Blank = YARG’s first song folder.</p>
+            <div class="inline"><input v-model="encoreDir" placeholder="(automatic)" spellcheck="false" /><button @click="applyEncoreDir">Apply</button></div>
+            <p v-if="encMsg" class="hint ok">{{ encMsg }}</p>
+          </details>
+        </section>
+
         <!-- phones -->
         <section>
           <h3><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>Phones & screens</h3>
@@ -252,6 +285,7 @@ h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; f
 h3 svg { width: 18px; height: 18px; fill: none; stroke: #b48cff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .hint { color: var(--muted); font-size: 12.5px; margin: 0; line-height: 1.45; font-weight: 400; }
 .hint.ok { color: var(--ok); }
+.hint.warn { color: var(--solo); }
 
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .steps li { display: flex; gap: 12px; align-items: flex-start; }

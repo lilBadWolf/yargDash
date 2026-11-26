@@ -2,6 +2,7 @@
 import { reactive } from 'vue';
 import { onYargMessage } from './yarg.js';
 import { onLibraryMessage } from './library.js';
+import { onEncoreMessage } from './encore.js';
 
 export const conn = reactive({
   connected: false, // connected to the server?
@@ -22,6 +23,7 @@ export function connect() {
     if (msg.type === 'snapshot') { conn.lan = msg.lan || []; conn.code = msg.code || ''; conn.app = !!msg.app; conn.platform = msg.platform || ''; }
     onYargMessage(msg);
     onLibraryMessage(msg);
+    onEncoreMessage(msg);
   };
 }
 

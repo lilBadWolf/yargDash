@@ -13,6 +13,7 @@
 //   GET  /events          SSE stream: {type:'snapshot'|'yarg'|'yargClock'|'yargBeat'|'yargTabs', ...}
 //   GET  /status          JSON status: {name:'yargDash', version, code fingerprint, pid, LAN addresses}
 //   POST /config          {yargDir:'/path/to/YARG data'} ('' = auto: YARG's standard data folder)
+//                         {encoreDir:'/path'}  where Encore downloads go ('' = YARG's first song folder)
 //                         {streamLocal:true}  macOS: YARG started by yargDash sends its stream to this Mac only (127.0.0.1)
 //   POST /yarg/menusync   {on:true}                     the menu song started from the top: follow it (approximate)
 //   GET  /yarg/lanes                                    the Lanes view's notes: every guitar/bass/drums/keys part of the song shown
@@ -23,7 +24,7 @@
 //   POST /yarg/tab/tuning {track, tuning:[midi…]|null}  set a track's tuning for this song (null = as the chart/file says)
 //   POST /yarg/tab/find                                 open the Ultimate Guitar search for the song in this computer's browser (this computer only)
 //   POST /restart                                       start a fresh copy of the server and exit (this computer only)
-//   POST /folder/open     {which:'tabs'|'data'}             show the tab library / data folder in Finder/Explorer (this computer only)
+//   POST /folder/open     {which:'tabs'|'data'|'encore'}    show the tab library / data / Encore download folder in Finder/Explorer (this computer only)
 //   POST /yarg/start      {app?:'/path/YARG.app', restart?:true}  macOS: start YARG with its data stream working (this computer only)
 //   GET  /library                                       every song in YARG's song folders (see library.mjs)
 //   POST /library/rescan                                look through the song folders again
@@ -37,6 +38,9 @@
 //                                                       -> { stems: [{ name, size }], delay }   (this computer only)
 //   POST /practice/clock  {state:'run'|'pause', t, rate} the practice player's position (this computer only)
 //   POST /practice/stop                                 stop practising (this computer only)
+//   POST /encore/search   {q, artist, page, instrument}  search Chorus Encore (enchor.us) -> { found, page, pages, unit, charts } (see encore.mjs)
+//   POST /encore/download {md5}                          download a chart from the last searches into YARG's song folder (this computer only)
+//   GET  /encore/status                                  where downloads go, how many were downloaded here, downloads in progress
 //
 // The desktop app (electron/main.mjs) runs this same file with YARGDASH_APP=1 and its own --data folder.
 
@@ -50,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 import { createYarg } from './yarg.mjs';
 import { createTabs } from './tabs.mjs';
 import { createLibrary } from './library.mjs';
+import { createEncore } from './encore.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -86,7 +91,7 @@ if (args.log) {
   process.stderr.write = write;
 }
 
-let config = { httpPort: 8900, yargDir: '', streamLocal: false };
+let config = { httpPort: 8900, yargDir: '', streamLocal: false, encoreDir: '' };
 try { config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) }; } catch {}
 if (args.port) config.httpPort = Number(args.port);
 const saveConfig = () => fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), () => {});
@@ -260,6 +265,19 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(409, { error: e.message }); }
     return json(404, { error: 'not found' });
   }
+  if (url.pathname.startsWith('/encore/')) {
+    try {
+      if (url.pathname === '/encore/status') return json(200, encore.status());
+      if (req.method !== 'POST') return json(405, { error: 'POST' });
+      const b = await readBody(req);
+      if (url.pathname === '/encore/search') return json(200, await encore.search(b));
+      if (url.pathname === '/encore/download') {
+        if (!isLocal(req)) return json(403, { error: 'Downloads go to the YARG computer: download from there' });
+        return json(200, encore.download(String(b.md5 || '')));
+      }
+    } catch (e) { return json(e.name === 'TimeoutError' ? 504 : 400, { error: e.name === 'TimeoutError' ? 'Encore didn’t answer' : e.message }); }
+    return json(404, { error: 'not found' });
+  }
   if (req.method === 'POST' && url.pathname === '/yarg/start') {
     if (!isLocal(req)) return json(403, { error: 'Only from the YARG computer' });
     const b = await readBody(req);
@@ -278,12 +296,14 @@ const server = http.createServer(async (req, res) => {
       library.rescan('YARG folder changed');
     }
     if (typeof body.streamLocal === 'boolean') { config.streamLocal = body.streamLocal; saveConfig(); }
+    if (typeof body.encoreDir === 'string') { config.encoreDir = body.encoreDir.trim(); saveConfig(); }
     return res.end('ok');
   }
   if (req.method === 'POST' && url.pathname === '/folder/open') {
     if (!isLocal(req)) { res.statusCode = 403; return res.end('only from the YARG computer'); }
     const body = await readBody(req);
-    const dir = body.which === 'data' ? DATA_DIR : path.join(DATA_DIR, 'tabs');
+    const dir = body.which === 'data' ? DATA_DIR : body.which === 'encore' ? encore.folder() : path.join(DATA_DIR, 'tabs');
+    if (!dir) { res.statusCode = 409; return res.end('no folder'); }
     fs.mkdirSync(dir, { recursive: true });
     openUrl(dir);
     return res.end('ok');
@@ -301,6 +321,7 @@ const server = http.createServer(async (req, res) => {
 const tabs = createTabs({ dataDir: DATA_DIR, log, broadcast, onChange: () => library.bump() }); // (library is set up below; tabs only change later)
 const yarg = createYarg({ log, broadcast, getDir: () => config.yargDir, tabs });
 const library = createLibrary({ dataDir: DATA_DIR, log, broadcast, yarg, tabs });
+const encore = createEncore({ dataDir: DATA_DIR, log, broadcast, library, getDir: () => config.encoreDir, version: VERSION });
 tabs.watchDownloads(path.join(os.homedir(), 'Downloads'));
 
 // Restart: start a copy of ourselves (same arguments) and exit; it waits for us to be gone (--after).

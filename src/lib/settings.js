@@ -20,6 +20,7 @@ const defaults = {
   mode: 'lyrics',                // dashboard: lyrics | tab | lanes | keys | click, last picked on this device
   libSort: 'artist',             // library: artist | title | added | played | year | length
   libFilter: 'all',              // library: all | tab | notab | proGuitar | proBass | proKeys | keys | played | unplayed
+  libSource: 'mine',             // library: mine (YARG's songs) | encore (search Chorus Encore)
 };
 
 let saved = {};

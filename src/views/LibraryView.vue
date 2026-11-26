@@ -1,11 +1,13 @@
 <script setup>
 // YARG's songs: search, filter and sort; tap a song for what's in it and its tab (SongModal).
+// The Encore side (EncorePane) searches Chorus Encore for charts to download.
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { library, loadLibrary, rescanLibrary, findSongTab, artUrl, INSTRUMENTS, ROW_PARTS, TIER, fmtLength } from '../lib/library.js';
 import { yarg } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 import { openModal } from '../lib/modal.js';
 import InstIcon from '../components/InstIcon.vue';
+import EncorePane from '../components/EncorePane.vue';
 
 const INST = Object.fromEntries(INSTRUMENTS.map((i) => [i.key, i]));
 const PRO_OF = { guitar: 'proGuitar', bass: 'proBass', drums: 'proDrums', keys: 'proKeys', vocals: 'harmonies' };
@@ -83,6 +85,7 @@ const starStr = (n) => (n >= 6 ? '★★★★★' : '★'.repeat(Math.max(0, n)
 const hue = (s) => [...(s.artist || s.name)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 
 function onKey(e) {
+  if (settings.libSource === 'encore') return;
   if ((e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key === 'f')) && document.activeElement !== searchEl.value) { e.preventDefault(); searchEl.value?.focus(); }
 }
 onMounted(() => {
@@ -98,6 +101,12 @@ watch(() => library.version, () => loadLibrary());
 
 <template>
   <div class="lib">
+    <div class="src" role="tablist">
+      <button role="tab" :class="{ on: settings.libSource !== 'encore' }" @click="settings.libSource = 'mine'">My songs <small>{{ library.songs.length || '' }}</small></button>
+      <button role="tab" :class="{ on: settings.libSource === 'encore' }" @click="settings.libSource = 'encore'">Get more from Encore</button>
+    </div>
+    <EncorePane v-if="settings.libSource === 'encore'" />
+    <template v-else>
     <div class="bar">
       <label class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
@@ -162,12 +171,17 @@ watch(() => library.version, () => loadLibrary());
       <div ref="more" class="more" />
       <p v-if="results.length" class="foot">{{ results.length }} of {{ library.songs.length }} songs<template v-if="library.folders.length"> · {{ library.folders.join(', ') }}</template></p>
     </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
 .lib { height: 100%; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .bar { display: flex; gap: 8px; align-items: center; }
+.src { flex: none; align-self: flex-start; display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.src button { height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 700; font-size: 13px; }
+.src button.on { background: var(--btn); color: var(--text); box-shadow: inset 0 -2px 0 #b48cff; }
+.src small { margin-left: 4px; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
 .search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); transition: border-color .15s, box-shadow .15s; }
 .search:focus-within { border-color: #b48cff; box-shadow: 0 0 0 3px #b48cff22; }
 .search svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; flex: none; }

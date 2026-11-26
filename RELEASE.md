@@ -1,21 +1,27 @@
-## 🎸 yargDash 1.2.1
+## 🎸 yargDash 1.3.0
 
-A few things to make building your tab library easier 📚
+Practise without YARG, and grow your library without leaving yargDash 🎧🛒
 
 ### 🆕 What's new
 
-- 🔎 **Find tabs from the Library**: in *Needs a tab*, every song has a **Find** button. It opens Ultimate Guitar's search for that song, and a Guitar Pro file you download is added to it by itself. (On the YARG computer.)
-- ➕ **Guitar Pro files for songs with Pro charts**: a song whose chart has Pro Guitar, Pro Bass or Pro Keys can get a Guitar Pro file too, and its tracks show next to the chart's. The Tab and Keys views have **Find tab** and **+ Guitar Pro file** for them.
-- 📚 *Has tab* and *Needs a tab* are now about Guitar Pro files, so songs with Pro charts show up in *Needs a tab* until they have one. The *Pro Guitar*, *Pro Bass* and *Pro Keys* filters still find the chart tabs.
-- 💾 **Tab library in Settings**: see where your tabs are kept and open the folder (or the data folder) with one click. Copy or zip it to back up your tabs; copy it back to restore them.
+- 🎧 **Practice mode**: with YARG closed, open a song in the Library and press **Practice**. yargDash plays the song's own audio on the YARG computer, and the Tab, Keys and Lyrics views follow it, on every phone too. The Dashboard gets a transport bar:
+  - ⏯️ play/pause and seek (`Space` plays/pauses, `←` `→` skip 5 s)
+  - 🔁 jump to a section, or loop it
+  - 🐢 slow down to 50% (or up to 125%) without changing the pitch
+  - 🔇 mute any part of the song (Guitar, Bass, Drums, Vocals…) to play it yourself
+- 🛒 **Get more from Encore**: the Library can search [Chorus Encore](https://www.enchor.us) and download charts straight into YARG's song folder.
+  - Search anything, or by **Artist**; more results load as you scroll
+  - ✅ **Downloaded** marks charts you already have (from yargDash or the Encore website), 🔁 **In library** marks songs you have as another chart or version
+  - Downloads run one at a time with progress, and show up in the Library by themselves. Rescan songs in YARG to play them there.
+  - *Settings → Encore downloads* shows where they go.
 
 ### ⬇️ Download
 
 | | |
 |---|---|
-| 🍎 macOS, Apple Silicon | `yargDash-1.2.1-mac-arm64.dmg` |
-| 🍏 macOS, Intel | `yargDash-1.2.1-mac-x64.dmg` |
-| 🪟 Windows | `yargDash-Setup-1.2.1.exe` |
+| 🍎 macOS, Apple Silicon | `yargDash-1.3.0-mac-arm64.dmg` |
+| 🍏 macOS, Intel | `yargDash-1.3.0-mac-x64.dmg` |
+| 🪟 Windows | `yargDash-Setup-1.3.0.exe` |
 | 🐧 Linux | `.AppImage` (updates itself) or `.deb` |
 
 Windows and Linux (AppImage) update themselves. On macOS, install the new version over the old one; your tabs and settings stay.

@@ -10,7 +10,8 @@
 //  * Practice (YARG not running): a song's audio stems (song.ogg, guitar.ogg, …, or the same inside an .sng), served
 //    in byte ranges so a page's <audio> can seek in them.
 //
-// Exports createLibrary({ dataDir, log, broadcast, yarg, tabs }) -> { list(), song(id), art(id), meta(id), stems(id), stem(id, name), rescan(), close() }
+// Exports createLibrary({ dataDir, log, broadcast, yarg, tabs }) ->
+//   { list(), song(id), art(id), meta(id), entries(), folders(), stems(id), stem(id, name), rescan(), close() }
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -147,6 +148,8 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       };
     },
     meta: (id) => byId.get(id) || null,
+    entries: () => [...byLoc.values()],
+    folders: () => (folders.length ? folders : songFolders()),
     // One song in full: what its chart really has, its tabs lined up, and its best score
     async song(id) {
       const e = byId.get(id);
