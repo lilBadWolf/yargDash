@@ -1,7 +1,8 @@
 <script setup>
 // YARG's songs: search, filter and sort; tap a song for what's in it and its tab (SongModal).
 // The Encore side (EncorePane) searches Chorus Encore for charts to download.
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue';
+import { keepScroll } from '../lib/keepScroll.js';
 import { library, loadLibrary, rescanLibrary, findSongTab, artUrl, INSTRUMENTS, ROW_PARTS, TIER, fmtLength } from '../lib/library.js';
 import { yarg } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
@@ -92,9 +93,12 @@ onMounted(() => {
   loadLibrary();
   io = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting) && limit.value < results.value.length) limit.value += PAGE; }, { root: scroller.value, rootMargin: '600px' });
   if (more.value) io.observe(more.value);
-  window.addEventListener('keydown', onKey);
 });
-onBeforeUnmount(() => { io?.disconnect(); window.removeEventListener('keydown', onKey); });
+onBeforeUnmount(() => io?.disconnect());
+// the view stays alive while you're elsewhere (App.vue): keys only while it shows, and the list keeps its place
+onActivated(() => window.addEventListener('keydown', onKey));
+onDeactivated(() => window.removeEventListener('keydown', onKey));
+keepScroll(scroller, () => settings.libSource !== 'encore');
 // the library changed on the server (rescan, a tab added): fetch it again
 watch(() => library.version, () => loadLibrary());
 </script>
@@ -105,8 +109,9 @@ watch(() => library.version, () => loadLibrary());
       <button role="tab" :class="{ on: settings.libSource !== 'encore' }" @click="settings.libSource = 'mine'">My songs <small>{{ library.songs.length || '' }}</small></button>
       <button role="tab" :class="{ on: settings.libSource === 'encore' }" @click="settings.libSource = 'encore'">Get more from Encore</button>
     </div>
-    <EncorePane v-if="settings.libSource === 'encore'" />
-    <template v-else>
+    <!-- both sides stay put while the other shows -->
+    <EncorePane v-show="settings.libSource === 'encore'" />
+    <div v-show="settings.libSource !== 'encore'" class="mine">
     <div class="bar">
       <label class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
@@ -171,7 +176,7 @@ watch(() => library.version, () => loadLibrary());
       <div ref="more" class="more" />
       <p v-if="results.length" class="foot">{{ results.length }} of {{ library.songs.length }} songs<template v-if="library.folders.length"> · {{ library.folders.join(', ') }}</template></p>
     </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -199,6 +204,7 @@ watch(() => library.version, () => loadLibrary());
 .chip small { margin-left: 4px; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
 .chip.on { background: #b48cff1f; border-color: #b48cff; color: #e2d4ff; }
 
+.mine { display: contents; }
 .list { flex: 1; min-height: 0; overflow-y: auto; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); padding: 6px; }
 .letter { position: sticky; top: -6px; z-index: 1; margin: 0 -6px; padding: 10px 16px 6px; font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #b48cff; background: linear-gradient(var(--panel) 70%, #14171c00); }
 .row { width: 100%; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto 52px 110px 48px; align-items: center; gap: 14px; padding: 7px 10px; border: 0; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }

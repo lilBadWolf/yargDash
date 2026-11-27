@@ -1,7 +1,7 @@
 <script setup>
 // Pitch guide: the part's notes scrolling right-to-left past a "now" line, with the note to sing named.
 // Notes come from the chart (exact pitches and timing), drawn on a canvas each frame.
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue';
 import { yarg, songTime, noteName } from '../lib/yarg.js';
 
 const props = defineProps({ part: { type: String, default: 'vocals' } });
@@ -65,8 +65,9 @@ function setLabel(now, next, inS) { // only touch Vue when the text changes
   const l = label.value, r = Math.round(inS * 10) / 10;
   if (l.now !== now || l.next !== next || l.inS !== r) label.value = { now, next, inS: r };
 }
-onMounted(() => { raf = requestAnimationFrame(draw); });
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+// drawn only while shown (views and panels stay alive in the background, see App.vue / DashView)
+onActivated(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+onDeactivated(() => cancelAnimationFrame(raf));
 </script>
 
 <template>

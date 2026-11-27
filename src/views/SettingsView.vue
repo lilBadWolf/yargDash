@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onActivated } from 'vue';
 import { settings, resetSettings } from '../lib/settings.js';
 import { conn, connect, post } from '../lib/conn.js';
 import { yarg } from '../lib/yarg.js';
@@ -9,13 +9,24 @@ import { shareHost, pageUrl, qrSvg } from '../lib/qr.js';
 import { go } from '../lib/router.js';
 import logo from '../assets/logo.svg';
 import StartYarg from '../components/StartYarg.vue';
+import FxPreview from '../components/FxPreview.vue';
+import { midi, testLights, noteName, keyboardSize, keyboardRange } from '../lib/midi.js';
+import { useMidi } from '../lib/keyslights.js';
+import { FX, FX_COLOURS } from '../lib/keysfx.js';
+
+const TABS = [['general', 'General'], ['library', 'Library'], ['keys', 'Keys & MIDI']];
+const tab = computed(() => (TABS.some(([k]) => k === settings.settingsTab) ? settings.settingsTab : 'general'));
+const kbSize = computed(() => keyboardSize());
+const kbRange = computed(() => keyboardRange());
+const amtName = (a) => (a <= 0.5 ? 'Subtle' : a <= 1.2 ? 'Normal' : a <= 2 ? 'Big' : 'Wild');
 const port = location.port || '80';
 const version = __APP_VERSION__;
 
 // server settings shown here (config.json on the server)
 const streamLocal = ref(false);
 const tabsDir = ref(''), dataDir = ref('');
-onMounted(async () => {
+// each visit (the view stays alive in between, see App.vue)
+onActivated(async () => {
   loadLibrary();
   try {
     const st = await (await fetch('/status')).json();
@@ -119,9 +130,14 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </div>
       </section>
 
+      <!-- tabs (the last one open is kept per device) -->
+      <div class="tabs" role="tablist">
+        <button v-for="[k, l] in TABS" :key="k" role="tab" :class="{ on: tab === k }" @click="settings.settingsTab = k">{{ l }}</button>
+      </div>
+
       <div class="grid">
         <!-- YARG -->
-        <section>
+        <section v-show="tab === 'general'">
           <h3><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>Connect YARG</h3>
           <ol class="steps">
             <li v-for="(st, i) in steps" :key="i" :class="{ ok: st.ok }">
@@ -150,7 +166,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </section>
 
         <!-- library -->
-        <section>
+        <section v-show="tab === 'library'">
           <h3><svg viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16.5 4.5l3.8 1 -3.6 14.5 -3.8-1z" /></svg>Song library</h3>
           <p class="hint">yargDash reads the song folders YARG uses (YARG: <i>Settings → Songs</i>). <code>.sng</code> files and folders with a <code>song.ini</code> are listed.</p>
           <ul class="folders">
@@ -166,7 +182,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </section>
 
         <!-- tab library -->
-        <section>
+        <section v-show="tab === 'library'">
           <h3><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>Tab library</h3>
           <p class="hint">Your Guitar Pro files, and each song's bar offset and tunings (<code>index.json</code>), are kept in this folder. To back them up, copy the folder (or zip it). To restore or move them to another computer, copy its contents back while yargDash is closed. Settings and the log are in the data folder, one level up.</p>
           <ul class="folders">
@@ -181,7 +197,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </section>
 
         <!-- Encore downloads -->
-        <section>
+        <section v-show="tab === 'library'">
           <h3><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>Encore downloads</h3>
           <p class="hint">Charts you download from Chorus Encore (Library → Get more from Encore) go into this song folder{{ enc?.downloaded ? ` (${enc.downloaded} so far)` : '' }}. YARG only sees them after you rescan songs in YARG.</p>
           <ul class="folders">
@@ -201,7 +217,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </section>
 
         <!-- phones -->
-        <section>
+        <section v-show="tab === 'general'">
           <h3><svg viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>Phones & screens</h3>
           <div class="share">
             <button class="qr" title="Copy the link" @click="copy">
@@ -221,7 +237,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
         </section>
 
         <!-- this device -->
-        <section>
+        <section v-show="tab === 'general'">
           <h3><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>This device</h3>
           <div class="field">
             <div><b>Lyrics timing</b><p class="hint">Lyrics early or late on this device (e.g. a slow phone)? + shows them earlier.</p></div>
@@ -237,8 +253,112 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
           </div>
         </section>
 
+        <!-- keys & midi: the keyboard -->
+        <section v-show="tab === 'keys'">
+          <h3><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M7 6v7M12 6v7M17 6v7M7 18v-5M12 18v-5M17 18v-5" /></svg>MIDI keyboard</h3>
+          <p v-if="midi.status === 'unsupported'" class="hint warn">This browser can't use MIDI. Use Chrome, Edge or the yargDash app on the computer the keyboard's plugged into.</p>
+          <template v-else>
+            <p class="hint">Plug any MIDI keyboard into this computer: the keys you press show in the Keys view (amber, or white-outlined when it's the right note).</p>
+            <label class="toggle"><input type="checkbox" :checked="useMidi" @change="settings.keysMidi = $event.target.checked" />
+              <span><b>Use a MIDI keyboard on this device</b><span class="hint">{{ settings.keysMidi == null ? 'On by itself on the YARG computer.' : '' }}</span></span></label>
+            <p v-if="midi.status === 'denied'" class="hint warn">MIDI isn't allowed here: {{ midi.error }}</p>
+            <template v-if="useMidi && midi.status === 'ready'">
+              <label>Listen to
+                <select v-model="settings.midiInput">
+                  <option value="">Every MIDI keyboard{{ midi.allInputs.length ? ` (${midi.allInputs.join(', ')})` : '' }}</option>
+                  <option v-for="n in midi.allInputs" :key="n" :value="n">{{ n }}</option>
+                  <option v-if="settings.midiInput && !midi.allInputs.includes(settings.midiInput)" :value="settings.midiInput">{{ settings.midiInput }} (not plugged in)</option>
+                </select>
+              </label>
+              <p v-if="!midi.allInputs.length" class="hint warn">No MIDI keyboard found. Plug one in: it shows up here by itself.</p>
+              <p v-else class="hint" :class="{ ok: midi.last }">{{ midi.last ? `Last key: ${noteName(midi.last.note)} from ${midi.last.from} (velocity ${midi.last.vel})` : `Press a key to check it's heard${midi.count ? ` (${midi.count} other MIDI messages so far)` : ''}.` }}</p>
+              <label class="toggle"><input v-model="settings.keysMatch" type="checkbox" />
+                <span><b>Show your keyboard's keys in the Keys view</b><span class="hint">All its keys, laid out like the real thing, so you can see where your hands go. Notes it doesn't have are dimmed.</span></span></label>
+              <div class="field">
+                <div><b>Keyboard size</b><p class="hint">{{ kbRange ? `${noteName(kbRange[0])} to ${noteName(kbRange[1])}` : '' }}{{ kbSize.auto ? (kbSize.model ? ` · ${kbSize.model} has ${kbSize.keys} keys` : ` · ${kbSize.keys} keys, unless you pick its size`) : '' }}</p></div>
+                <select v-model="settings.kbSize" class="narrow">
+                  <option value="auto">Automatic</option>
+                  <option v-for="k in [25, 32, 37, 49, 61, 76, 88]" :key="k" :value="String(k)">{{ k }} keys</option>
+                </select>
+              </div>
+              <div class="field">
+                <div><b>Octave</b><p class="hint">If you've moved it with the keyboard's octave buttons.</p></div>
+                <div class="stepper">
+                  <button aria-label="Down an octave" @click="settings.kbShift = Math.max(-3, (settings.kbShift || 0) - 1)">−</button>
+                  <span><b>{{ settings.kbShift > 0 ? '+' : '' }}{{ settings.kbShift || 0 }}</b></span>
+                  <button aria-label="Up an octave" @click="settings.kbShift = Math.min(3, (settings.kbShift || 0) + 1)">+</button>
+                </div>
+              </div>
+            </template>
+          </template>
+        </section>
+
+        <!-- keys & midi: key lights -->
+        <section v-show="tab === 'keys'" v-if="midi.status !== 'unsupported'">
+          <h3><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" /></svg>Key lights</h3>
+          <p class="hint">A keyboard with lights in its keys can light the notes to play, in any view: the Keys view's part, a moment before each note.</p>
+          <template v-if="useMidi && midi.status === 'ready'">
+            <label>Keyboard to light
+              <select v-model="settings.lightsOut">
+                <option value="">A The ONE keyboard, when one's plugged in</option>
+                <option v-for="n in midi.allOutputs" :key="n" :value="n">{{ n }}</option>
+                <option v-if="settings.lightsOut && !midi.allOutputs.includes(settings.lightsOut)" :value="settings.lightsOut">{{ settings.lightsOut }} (not plugged in)</option>
+              </select>
+            </label>
+            <label>How it lights its keys
+              <select v-model="settings.lightsProto">
+                <option value="auto">Automatic</option>
+                <option value="one">The ONE (Smart Piano, Piano COLOR, Light Keyboard)</option>
+                <option value="notes">Sent the notes (Casio lighted keys, some Yamaha and others)</option>
+              </select>
+            </label>
+            <label v-if="midi.proto === 'notes'">Channel <span class="hint">the one the keyboard lights its keys from. It may play the notes too: turn that channel down on the keyboard.</span>
+              <select v-model.number="settings.lightsChannel"><option v-for="c in 16" :key="c" :value="c">{{ c }}</option></select>
+            </label>
+            <div class="field">
+              <div><b>Light keys early</b><p class="hint">How long before its note a key lights.</p></div>
+              <div class="stepper">
+                <button aria-label="Later" @click="settings.lightsLead = Math.max(0, Math.round((settings.lightsLead - 0.05) * 100) / 100)">−</button>
+                <span><b>{{ Math.round((settings.lightsLead || 0) * 1000) }}</b> ms</span>
+                <button aria-label="Earlier" @click="settings.lightsLead = Math.min(1, Math.round((settings.lightsLead + 0.05) * 100) / 100)">+</button>
+              </div>
+            </div>
+            <label class="toggle"><input v-model="settings.keysLights" type="checkbox" /><span><b>Light the keys</b><span class="hint">Also on the Keys view: the Lights button.</span></span></label>
+            <div class="row">
+              <button :disabled="!midi.lights" @click="testLights">Test lights</button>
+              <span class="hint" :class="{ ok: midi.lights, warn: !midi.lights }">{{ midi.lights ? `Lighting ${midi.lights} (${midi.proto === 'one' ? 'The ONE' : `notes, channel ${settings.lightsChannel}`})` : settings.lightsOut ? `${settings.lightsOut} isn't plugged in` : 'No The ONE keyboard found: pick the keyboard above' }}</span>
+            </div>
+          </template>
+          <p v-else class="hint">Turn on <b>Use a MIDI keyboard on this device</b> first.</p>
+        </section>
+
+        <!-- keys & midi: effects -->
+        <section v-show="tab === 'keys'" class="wide">
+          <h3><svg viewBox="0 0 24 24"><path d="M12 2l1.8 5.6L19 9.5l-5.2 1.9L12 17l-1.8-5.6L5 9.5l5.2-1.9zM19 15l.9 2.6 2.1.9-2.1.9L19 22l-.9-2.6-2.1-.9 2.1-.9z" /></svg>Keys view effects</h3>
+          <div class="fxgrid">
+            <div class="fxcol">
+              <b>When a note reaches the keys</b>
+              <div class="chips"><button v-for="[k, l] in FX" :key="k" class="chip" :class="{ on: settings.keysFx === k }" @click="settings.keysFx = k">{{ l }}</button></div>
+              <label class="amt">How drastic <input v-model.number="settings.keysFxAmt" type="range" min="0.25" max="3" step="0.05" :disabled="settings.keysFx === 'none'" /><span>{{ amtName(settings.keysFxAmt) }}</span></label>
+              <FxPreview which="land" />
+            </div>
+            <div class="fxcol">
+              <b>When you play the right note <span class="hint">(MIDI keyboard)</span></b>
+              <div class="chips"><button v-for="[k, l] in FX" :key="k" class="chip" :class="{ on: settings.keysHitFx === k }" @click="settings.keysHitFx = k">{{ l }}</button></div>
+              <label class="amt">How drastic <input v-model.number="settings.keysHitFxAmt" type="range" min="0.25" max="3" step="0.05" :disabled="settings.keysHitFx === 'none'" /><span>{{ amtName(settings.keysHitFxAmt) }}</span></label>
+              <FxPreview which="hit" />
+            </div>
+          </div>
+          <div class="row">
+            <span class="hint">Colours</span>
+            <div class="chips"><button v-for="[k, l] in FX_COLOURS" :key="k" class="chip" :class="{ on: settings.keysFxColor === k }" @click="settings.keysFxColor = k">{{ l }}</button></div>
+            <span class="sp" />
+            <label class="amt">Glow on keys you press <input v-model.number="settings.keysPressGlow" type="range" min="0" max="2" step="0.1" /><span>{{ settings.keysPressGlow ? amtName(settings.keysPressGlow) : 'Off' }}</span></label>
+          </div>
+        </section>
+
         <!-- server -->
-        <section>
+        <section v-show="tab === 'general'">
           <h3><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>Server</h3>
           <dl>
             <dt>Connection</dt><dd :class="conn.connected ? 'ok' : 'bad'">{{ conn.connected ? 'Connected' : 'Unreachable' }}</dd>
@@ -280,6 +400,18 @@ section { background: var(--panel); border: 1px solid var(--line); border-radius
 .tile.s-warn .led { background: var(--solo); box-shadow: 0 0 10px var(--solo); }
 .led.lib { background: #b48cff; box-shadow: 0 0 10px #b48cff; }
 
+.tabs { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); align-self: flex-start; }
+.tabs button { height: 36px; border: 0; background: none; color: var(--muted); border-radius: 10px; padding: 0 16px; }
+.tabs button.on { background: var(--btn); color: var(--text); box-shadow: inset 0 -2px 0 #b48cff; }
+.wide { grid-column: 1 / -1; }
+.fxgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.fxcol { display: flex; flex-direction: column; gap: 10px; }
+.fxcol > b { font-size: 14px; }
+.amt { flex-direction: row; align-items: center; gap: 10px; font-weight: 600; color: var(--muted); }
+.amt input { flex: 1; padding: 0; accent-color: #b48cff; min-width: 100px; }
+.amt span { min-width: 52px; color: var(--text); font-size: 13px; }
+select.narrow { flex: none; width: auto; }
+select { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 9px 11px; font: inherit; font-weight: 400; min-width: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 12px; align-items: start; }
 h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--text); }
 h3 svg { width: 18px; height: 18px; fill: none; stroke: #b48cff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

@@ -10,8 +10,11 @@ import { modal } from './lib/modal.js';
 import { conn } from './lib/conn.js';
 import { yarg } from './lib/yarg.js';
 import logo from './assets/logo.svg';
+import { startKeysLights } from './lib/keyslights.js';
 
 const current = computed(() => ({ settings: SettingsView, library: LibraryView }[route.view] || DashView));
+// a The ONE keyboard's key lights follow the song in every view
+startKeysLights();
 const streamOk = computed(() => yarg.detected && yarg.clock.stream);
 
 // Performer pages: hold the logo for a second to get back to the dashboard.
@@ -38,7 +41,8 @@ const holdEnd = () => clearTimeout(holdTimer);
       </nav>
     </header>
 
-    <main><component :is="current" /></main>
+    <!-- views stay alive while hidden, so coming back finds them where you left them -->
+    <main><KeepAlive><component :is="current" /></KeepAlive></main>
 
     <QrModal v-if="modal.kind === 'qr'" v-bind="modal.props" />
     <SongModal v-if="modal.kind === 'song'" v-bind="modal.props" />

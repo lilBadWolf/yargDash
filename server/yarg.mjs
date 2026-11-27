@@ -1,7 +1,8 @@
 // YARG integration for the yargDash server: what song is playing, its lyrics, and where we are in it.
 //
 //  * Song:   YARG writes the song it's playing to <YARG data>/currentSong.json (blank outside gameplay).
-//            Its ActualLocation points at the song folder or .sng file, which we read the lyrics from.
+//            Its ActualLocation points at the song folder, .sng file or Rock Band package (con.mjs; the song in it
+//            is picked by name), which we read the lyrics from.
 //  * Clock:  YARG's "UDP Data Stream" (Settings > All Settings > Experimental) broadcasts game state
 //            ~88x/s on port 36107. It has no song position, but it does carry the pause state, the BPM
 //            (0 until the song reaches its first tempo marker, i.e. song time 0) and a byte for every
@@ -26,6 +27,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { midiLanes, chartLanes } from './lanes.mjs';
+import { isCon, conSongs, conRead } from './con.mjs';
 
 export const YARG_UDP_PORT = Number(process.env.LC_YARG_PORT) || 36107; // env override: for testing next to a running YARG
 
@@ -444,10 +446,11 @@ function parseChart(text) {
 }
 
 // Vocal parts (lyrics + notes), section names and the beat grid for a song folder or .sng file.
-export function loadLyrics(location) {
+export function loadLyrics(location, which = {}) {
   const want = ['notes.mid', 'notes.midi', 'notes.chart'];
   let files;
   if (/\.sng$/i.test(location)) files = readSngFiles(location, want);
+  else if (isConFile(location)) files = new Map([['notes.mid', conRead(location, conPick(location, which).files.mid)]]);
   else {
     files = new Map();
     for (const f of fs.readdirSync(location)) if (want.includes(f.toLowerCase())) files.set(f.toLowerCase(), fs.readFileSync(path.join(location, f)));
@@ -460,13 +463,29 @@ export function loadLyrics(location) {
   const end = Math.max(0, ...Object.values(out.parts).flatMap((pt) => pt.phrases.map((p) => p.e)), ...out.sections.map((x) => x.t)) + 120;
   out.beats = out.beats.filter(([t]) => t <= end);
   out.measures = out.beats.filter(([, k]) => k === 0).map(([t]) => t);
-  try { out.tunings = proTunings(songMetadata(location)); } catch { out.tunings = {}; }
+  try { out.tunings = proTunings(songMetadata(location, which)); } catch { out.tunings = {}; }
   return out;
 }
 
-// A song's metadata: the .sng metadata section or song.ini, keys lower-cased.
-export function songMetadata(location) {
+// A Rock Band package (con.mjs) is a file that isn't an .sng
+export function isConFile(location) {
+  if (/\.sng$/i.test(location)) return false;
+  try { return fs.statSync(location).isFile() && isCon(location); } catch { return false; }
+}
+// One song of a package: by its node (the library knows it), else by name (all YARG says is the package and the name)
+export function conPick(location, { node, name } = {}) {
+  const songs = conSongs(location);
+  const plain = (x) => String(x ?? '').replace(/<[^>]*>/g, '').trim().toLowerCase();
+  const s = (node && songs.find((x) => x.node === node)) || (name && songs.find((x) => plain(x.meta.name) === plain(name))) || (songs.length === 1 || !name ? songs[0] : null);
+  if (!s) throw new Error(`${name || 'that song'} isn't in ${path.basename(location)}`);
+  return s;
+}
+
+// A song's metadata: the .sng metadata section, song.ini, or a Rock Band package's songs.dta, keys lower-cased.
+// which: { node, name } picks the song in a package that holds several
+export function songMetadata(location, which = {}) {
   const meta = {};
+  if (isConFile(location)) return { ...conPick(location, which).meta };
   if (/\.sng$/i.test(location)) {
     const fd = fs.openSync(location, 'r');
     try {
@@ -508,8 +527,8 @@ export function proTunings(meta) {
 }
 
 // Name/artist/album/year of a song (.sng metadata or song.ini), for the menu music.
-export function songInfo(location) {
-  const meta = songMetadata(location);
+export function songInfo(location, which = {}) {
+  const meta = songMetadata(location, which);
   const strip = (s) => String(s ?? '').replace(/<[^>]*>/g, '');
   return { name: strip(meta.name) || path.basename(location).replace(/\.sng$/i, ''), artist: strip(meta.artist), album: strip(meta.album), year: strip(meta.year),
     length: (Number(meta.song_length) || 0) / 1000 };
@@ -717,7 +736,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     newPlay();
     try {
       if (!song.location) throw new Error('YARG did not say where the song is');
-      const l = loadLyrics(song.location);
+      const l = loadLyrics(song.location, { node: song.node, name: song.name });
       measures = l.measures;
       lyrics = { parts: l.parts, sections: l.sections, beats: l.beats };
       songLanes = l.lanes || null;
@@ -745,7 +764,7 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
     clock.rate = 1; clock.state = 'pause'; clock.t0 = 0; clock.w0 = wall();
     practiceAt = wall();
     setSong({ name: entry.name, artist: entry.artist, album: entry.album, charter: entry.charter, year: entry.year,
-      length: entry.length, location: entry.location, practice: true, id: entry.id }, 'Practice');
+      length: entry.length, location: entry.location, node: entry.node, practice: true, id: entry.id }, 'Practice');
     sendClock();
   }
   function stopPractice(why = '') {
@@ -807,6 +826,8 @@ export function createYarg({ log, broadcast, getDir, tabs = null }) {
         const locs = files.filter((f) => /\.sng$/i.test(f));
         for (const f of files) {
           if (/\.(ogg|opus|mp3|wav|flac)$/i.test(f) && fs.existsSync(path.join(path.dirname(f), 'song.ini'))) locs.push(path.dirname(f));
+          // a Rock Band package: only when it holds one song (which of several is playing can't be told)
+          else if (!path.extname(f) || /_rb3con$/i.test(f)) { try { if (isConFile(f) && conSongs(f).length === 1) locs.push(f); } catch {} }
         }
         cb([...new Set(locs)]);
       });

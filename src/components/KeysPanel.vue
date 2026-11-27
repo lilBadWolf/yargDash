@@ -5,9 +5,14 @@
 // grand staff's lower staff, or below middle C when the part doesn't say). The keyboard spans the part's range.
 // Pro Keys: the 17-key window Rock Band shows the player is marked, and moves with the chart.
 // Drawn on a canvas each frame; only the notes inside the visible window are touched.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+// A MIDI keyboard on this computer (lib/midi.js): the keys you press show on the keyboard (amber, or white-ringed in
+// the hand's colour when it's the right note). (A The ONE keyboard's lights run in any view: lib/keyslights.js.)
+import { ref, computed, watch, onActivated, onDeactivated } from 'vue';
 import { yarg, songTime, fetchTabTrack } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
+import { midi, held, keyboardRange } from '../lib/midi.js';
+import { useMidi } from '../lib/keyslights.js';
+import { createFx } from '../lib/keysfx.js';
 
 const props = defineProps({ trackId: { type: String, default: null } });
 
@@ -38,7 +43,7 @@ const hand = (n) => (n[3] >= 0 ? n[3] : n[2] < 60 ? 1 : 0);
 const twoHands = computed(() => !!track.value?.notes.some((n) => hand(n) === 1) && track.value.notes.some((n) => hand(n) === 0));
 
 // the keys shown: the part's range out to whole white keys, at least two octaves (Pro Keys: its C3-C5)
-const range = computed(() => {
+const partRange = computed(() => {
   const ns = track.value?.notes || [];
   if (!ns.length) return { lo: 48, hi: 72 };
   if (track.value.ranges) return { lo: 48, hi: 72 };
@@ -52,6 +57,19 @@ const range = computed(() => {
   // start on a C or F and end on a B or E when it costs at most a couple of keys: reads like a real keyboard
   for (let i = 0; i < 2 && lo > 21 && lo % 12 !== 0 && lo % 12 !== 5; i++) { lo--; while (BLACK[lo % 12]) lo--; }
   for (let i = 0; i < 2 && hi < 108 && hi % 12 !== 11 && hi % 12 !== 4; i++) { hi++; while (BLACK[hi % 12]) hi++; }
+  return { lo, hi };
+});
+// with a MIDI keyboard: its own keys, so the screen matches where your hands go (plus any of the part's notes it
+// doesn't have, dimmed). phys: the keyboard's [lo, hi], or null
+const phys = computed(() => (useMidi.value && settings.keysMatch ? keyboardRange() : null));
+const range = computed(() => {
+  const r = partRange.value, k = phys.value;
+  if (!k) return r;
+  const ns = track.value?.notes || [];
+  let lo = k[0], hi = k[1];
+  for (const n of ns) { if (n[2] < lo) lo = n[2]; if (n[2] > hi) hi = n[2]; }
+  while (lo > 21 && BLACK[lo % 12]) lo--;
+  while (hi < 108 && BLACK[hi % 12]) hi++;
   return { lo, hi };
 });
 
@@ -68,7 +86,8 @@ function updateChord(t) {
 // ---------- drawing ----------
 const canvas = ref(null), box = ref(null);
 let raf = 0, lastNow = null, lastFrame = 0;
-const sparks = [];
+const fx = createFx();
+const seen = new WeakSet(); // key presses already looked at (a hit or not)
 const lowerBound = (a, t) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m][0] < t) lo = m + 1; else hi = m; } return lo; };
 function rrect(ctx, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -191,45 +210,62 @@ function draw(frameAt) {
     }
   }
 
-  // ----- sparks where notes land -----
+  // ----- effects (lib/keysfx.js, picked in Settings → Keys & MIDI) -----
+  const fxOpt = (p, h, amt) => ({ x: keyX(p), w: keyW(p), y: strikeY, col: HAND[h].key, pitch: p, palette: settings.keysFxColor, amt });
+  const landFx = settings.keysFx || 'sparks', landAmt = settings.keysFxAmt ?? 1;
+  const hitFx = settings.keysHitFx || 'flames', hitAmt = settings.keysHitFxAmt ?? 1;
+  // notes landing
   if (lastNow !== null && now > lastNow && now - lastNow < 0.25) {
     for (let i = lowerBound(notes, lastNow + 1e-6); i < notes.length && notes[i][0] <= now; i++) {
       const n = notes[i], p = n[2];
-      if (p < lo || p > hi || sparks.length > 500) continue;
-      const cx = keyX(p) + keyW(p) / 2, col = HAND[hand(n)].key;
-      for (let k = 0; k < 7; k++) sparks.push({ x: cx + (Math.random() - 0.5) * keyW(p) * 0.6, y: strikeY - 2, vx: (Math.random() - 0.5) * 90, vy: -60 - Math.random() * 170, life: 0.35 + Math.random() * 0.4, age: 0, col });
+      if (p >= lo && p <= hi) fx.burst(landFx, fxOpt(p, hand(n), landAmt));
     }
   }
   lastNow = now;
-  ctx.globalCompositeOperation = 'lighter';
-  for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i];
-    s.age += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 260 * dt;
-    if (s.age >= s.life || s.y > strikeY) { sparks.splice(i, 1); continue; }
-    ctx.globalAlpha = 1 - s.age / s.life; ctx.fillStyle = s.col;
-    ctx.beginPath(); ctx.arc(s.x, s.y, 1.6, 0, Math.PI * 2); ctx.fill();
+  for (const [p, a] of active) fx.sustain(landFx, fxOpt(p, a.hand, landAmt * 0.6), dt);
+  // you playing the right note (MIDI keyboard): a burst as you press it, more while you hold it
+  for (const [p, h] of held) {
+    if (p < lo || p > hi) continue;
+    const a = active.get(p);
+    if (!seen.has(h)) { seen.add(h); h.hit = !!a; if (a) fx.burst(hitFx, fxOpt(p, a.hand, hitAmt)); }
+    if (a && h.hit) fx.sustain(hitFx, fxOpt(p, a.hand, hitAmt), dt);
   }
+  ctx.globalCompositeOperation = 'lighter';
   // glow over the keys that are sounding
   for (const [p, a] of active) {
     const cx = keyX(p) + keyW(p) / 2, fresh = Math.max(0, 1 - (now - a.since) / 0.3);
-    const r = keyW(p) * (1.3 + fresh * 1.2);
+    const r = keyW(p) * (1.3 + fresh * 1.2) * (0.6 + 0.4 * Math.min(2, landAmt));
     const g = ctx.createRadialGradient(cx, strikeY, 0, cx, strikeY, r);
     g.addColorStop(0, HAND[a.hand].glow + (fresh > 0.2 ? 'cc' : '88')); g.addColorStop(1, '#00000000');
     ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(cx - r, strikeY - r, r * 2, r * 2);
   }
+  // the keys you're pressing (MIDI keyboard)
+  const pressGlow = settings.keysPressGlow ?? 1;
+  for (const [p] of held) {
+    if (p < lo || p > hi || pressGlow <= 0) continue;
+    const cx = keyX(p) + keyW(p) / 2, r = keyW(p) * 1.4 * pressGlow;
+    const g = ctx.createRadialGradient(cx, strikeY, 0, cx, strikeY, r);
+    g.addColorStop(0, active.has(p) ? '#ffffffaa' : '#ffd54a99'); g.addColorStop(1, '#00000000');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(cx - r, strikeY - r, r * 2, r * 2);
+  }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  fx.draw(ctx, dt, strikeY);
 
   // ----- keyboard -----
+  const pk = phys.value; // keys your keyboard doesn't have are dimmed
   ctx.fillStyle = '#07080a'; ctx.fillRect(0, strikeY, W, kbH);
   const press = Math.max(1.5, kbH * 0.02);
   for (const p of whites) {
-    const x = keyX(p), a = active.get(p), y = strikeY + 3 + (a ? press : 0);
+    const x = keyX(p), a = active.get(p), h = held.has(p), y = strikeY + 3 + (a || h ? press : 0);
     const g = ctx.createLinearGradient(0, y, 0, H);
-    if (a) { g.addColorStop(0, HAND[a.hand].key); g.addColorStop(1, HAND[a.hand].fill); }
+    if (a) { g.addColorStop(0, h ? '#ffffff' : HAND[a.hand].key); g.addColorStop(1, HAND[a.hand].fill); }
+    else if (h) { g.addColorStop(0, '#ffe58a'); g.addColorStop(1, '#e0a93a'); }
     else { g.addColorStop(0, '#d9dbde'); g.addColorStop(0.12, '#f6f6f3'); g.addColorStop(1, '#e4e4e0'); }
     rrect(ctx, x + 0.5, y, ww - 1, H - y - 1, Math.min(5, ww * 0.15));
     ctx.fillStyle = g; ctx.fill();
+    if (a && h) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke(); }
     if (curRange && (p < curRange[1] || p > curRange[2])) { ctx.fillStyle = '#00000055'; ctx.fill(); }
+    if (pk && (p < pk[0] || p > pk[1])) { ctx.fillStyle = '#000000a0'; ctx.fill(); }
     // C labels, and the name of a key while it sounds
     if (ww >= 11 && (p % 12 === 0 || (a && label))) {
       ctx.font = `${a ? 800 : 700} ${Math.round(Math.min(12, ww * 0.42))}px -apple-system, system-ui, sans-serif`;
@@ -239,14 +275,28 @@ function draw(frameAt) {
   }
   for (let p = lo; p <= hi; p++) {
     if (!BLACK[p % 12]) continue;
-    const x = keyX(p), a = active.get(p), y = strikeY + 2;
+    const x = keyX(p), a = active.get(p), h = held.has(p), y = strikeY + 2;
     const g = ctx.createLinearGradient(0, y, 0, y + bh);
-    if (a) { g.addColorStop(0, HAND[a.hand].dark); g.addColorStop(1, HAND[a.hand].keyDark); }
+    if (a) { g.addColorStop(0, h ? HAND[a.hand].key : HAND[a.hand].dark); g.addColorStop(1, HAND[a.hand].keyDark); }
+    else if (h) { g.addColorStop(0, '#f0c24a'); g.addColorStop(1, '#a8741c'); }
     else { g.addColorStop(0, '#30343b'); g.addColorStop(0.85, '#121418'); g.addColorStop(1, '#22262c'); }
-    rrect(ctx, x, y + (a ? press * 0.6 : 0), bw, bh, Math.min(3, bw * 0.15));
+    rrect(ctx, x, y + (a || h ? press * 0.6 : 0), bw, bh, Math.min(3, bw * 0.15));
     ctx.fillStyle = g; ctx.fill();
-    if (!a) { ctx.fillStyle = '#ffffff14'; ctx.fillRect(x + bw * 0.18, y + 3, bw * 0.64, bh * 0.75); }
+    if (a && h) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (!a && !h) { ctx.fillStyle = '#ffffff14'; ctx.fillRect(x + bw * 0.18, y + 3, bw * 0.64, bh * 0.75); }
     if (curRange && (p < curRange[1] || p > curRange[2])) { rrect(ctx, x, y, bw, bh, 2); ctx.fillStyle = '#00000066'; ctx.fill(); }
+    if (pk && (p < pk[0] || p > pk[1])) { rrect(ctx, x, y, bw, bh, 2); ctx.fillStyle = '#000000a0'; ctx.fill(); }
+  }
+  // keys you press outside the keys shown: a marker at that edge, with the note's name
+  let below = null, above = null;
+  for (const [p] of held) { if (p < lo) below = below == null ? p : Math.min(below, p); else if (p > hi) above = above == null ? p : Math.max(above, p); }
+  for (const [p, left] of [[below, true], [above, false]]) {
+    if (p == null) continue;
+    const label = `${left ? '◀ ' : ''}${NAMES[p % 12]}${Math.floor(p / 12) - 1}${left ? '' : ' ▶'}`;
+    ctx.font = '800 12px -apple-system, system-ui, sans-serif';
+    const tw = ctx.measureText(label).width + 14, x = left ? 6 : W - tw - 6, y = strikeY - 30;
+    rrect(ctx, x, y, tw, 22, 8); ctx.fillStyle = '#ffd54a'; ctx.fill();
+    ctx.fillStyle = '#1a1405'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, x + tw / 2, y + 11.5);
   }
   // the felt strip the notes land on
   const felt = ctx.createLinearGradient(0, strikeY - 2, 0, strikeY + 4);
@@ -254,8 +304,9 @@ function draw(frameAt) {
   ctx.fillStyle = felt; ctx.fillRect(0, strikeY - 2, W, 5);
 }
 
-onMounted(() => { raf = requestAnimationFrame(draw); });
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+// drawn only while shown (the dashboard keeps panels alive in the background, see DashView)
+onActivated(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+onDeactivated(() => cancelAnimationFrame(raf));
 </script>
 
 <template>
@@ -267,6 +318,7 @@ onBeforeUnmount(() => cancelAnimationFrame(raf));
     <div v-if="track" class="legend">
       <template v-if="twoHands"><i class="r" />Right <i class="l" />Left</template>
       <template v-if="track.ranges?.length"><i class="w" />Pro Keys window</template>
+      <template v-if="useMidi && midi.inputs.length"><i class="m" />You{{ midi.lights && settings.keysLights ? ' · keys lit' : '' }}</template>
     </div>
     <div v-if="loading && !track" class="msg">Loading…</div>
   </div>
@@ -282,5 +334,6 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .legend { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 5px; padding: 4px 9px 4px 3px; border-radius: 8px; background: #0b0d10d0; font-size: 11px; font-weight: 700; color: var(--muted); pointer-events: none; }
 .legend:empty { display: none; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; margin-left: 6px; }
+.legend .m { background: #ffd54a; }
 .legend .r { background: #3dd6c6; } .legend .l { background: #b48cff; } .legend .w { background: #ffd54a88; }
 </style>

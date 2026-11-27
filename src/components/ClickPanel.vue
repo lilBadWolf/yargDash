@@ -2,7 +2,7 @@
 // Click for the drummer: the beat count in the bar, flashing on every beat (bar 1 accented), the bar number and
 // how many bars until the next section. Timed from the chart's beat grid and the song clock, so it's on the beat
 // rather than a network hop behind it. Optional audible click on this device (Web Audio, scheduled ahead).
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onActivated, onDeactivated, onBeforeUnmount } from 'vue';
 import { yarg, songTime, playRate, sectionIndexAt } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 
@@ -71,7 +71,8 @@ function setSound(on) {
 }
 watch(() => yarg.clock.play, () => { nextIdx = -1; });
 
-onMounted(() => { raf = requestAnimationFrame(frame); if (settings.clickSound) settings.clickSound = false; /* needs a tap each visit */ });
+onActivated(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); if (settings.clickSound) settings.clickSound = false; /* needs a tap each visit */ });
+onDeactivated(() => { cancelAnimationFrame(raf); setSound(false); });
 onBeforeUnmount(() => { cancelAnimationFrame(raf); clearInterval(timer); ac?.close(); });
 
 const running = computed(() => yarg.clock.state === 'run');

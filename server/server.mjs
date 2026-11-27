@@ -211,6 +211,9 @@ const server = http.createServer(async (req, res) => {
         if (m[1] === '') start = Math.max(0, st.size - Number(m[2]));
         else { start = Number(m[1]); if (m[2] !== '') end = Math.min(end, Number(m[2])); }
         if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
+        // a few MB at a time: the browser asks for the rest as it needs it. Several stems streaming at once would
+        // otherwise hold all of its 6 connections to us, and nothing else (the practice clock) would get through.
+        end = Math.min(end, start + (4 << 20) - 1);
       }
       res.writeHead(m ? 206 : 200, { 'Content-Type': st.type, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Cache-Control': 'no-cache',
         ...(m ? { 'Content-Range': `bytes ${start}-${end}/${st.size}` } : {}) });
@@ -255,6 +258,7 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/practice/start') {
         const e = library.meta(String(b.id || ''));
         if (!e) return json(404, { error: 'no such song' });
+        await library.prepare(e.id);
         const st = library.stems(e.id);
         if (!st.stems.length) return json(409, { error: 'This song has no audio yargDash can play' });
         yarg.startPractice(e);

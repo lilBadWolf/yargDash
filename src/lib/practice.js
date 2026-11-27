@@ -3,6 +3,7 @@
 //
 // One <audio> per stem (song.ogg, guitar.ogg, …) so each can be muted, and so slowing down keeps the pitch.
 // The longest stem is the master; the others are kept in step with it by nudging their speed (or a jump when far off).
+// (A Rock Band song's one multichannel mogg is turned into such stems by the server first, see server/rbaudio.mjs.)
 // Lives at module level so it keeps playing while you move between the Dashboard and the Library.
 import { reactive, watch } from 'vue';
 import { post } from './conn.js';

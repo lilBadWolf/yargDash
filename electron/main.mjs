@@ -71,7 +71,8 @@ async function showWindow() {
     width: 1280, height: 820, minWidth: 420, minHeight: 360,
     title: 'yargDash', backgroundColor: '#0b0d10', autoHideMenuBar: true, show: false,
     icon: IS_MAC ? undefined : icon('icon.png'),
-    webPreferences: { contextIsolation: true, sandbox: true },
+    // not throttled behind other windows: practice audio and a MIDI keyboard's key lights keep time
+    webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => { win = null; });

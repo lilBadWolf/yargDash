@@ -3,7 +3,7 @@
 // through the current bar, and the page scrolling so the current row stays near the top. Notes that are sounding
 // light up. Drawn on a canvas each frame (only the rows on screen). Scroll/drag by hand to look around; it
 // goes back to following after a few seconds.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue';
 import { yarg, songTime, fetchTabTrack } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 
@@ -185,14 +185,19 @@ function draw() {
   }
 }
 
+// a new play (YARG started or restarted the song): back to the top, following again. (YARG waits at the start
+// with the clock stopped, so the follow below wouldn't move until the song reaches time 0.) Tabs kept alive in the
+// background (DashView) reset too.
+watch(() => yarg.clock.play, () => { scrollY = 0; userUntil = 0; drag = null; });
 // manual scrolling (wheel / drag); follow resumes after 4 s
 function onWheel(e) { scrollY += e.deltaY; userUntil = performance.now() + 4000; }
 function onDown(e) { drag = { y: e.clientY, s: scrollY, id: e.pointerId }; e.currentTarget.setPointerCapture(e.pointerId); }
 function onMove(e) { if (drag && drag.id === e.pointerId) { scrollY = drag.s - (e.clientY - drag.y); userUntil = performance.now() + 4000; } }
 function onUp() { drag = null; }
 
-onMounted(() => { raf = requestAnimationFrame(draw); });
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+// drawn only while shown (views and panels stay alive in the background, see App.vue / DashView)
+onActivated(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+onDeactivated(() => cancelAnimationFrame(raf));
 </script>
 
 <template>

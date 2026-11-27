@@ -3,7 +3,7 @@
 // side, whether or not anyone is playing them: an audience screen / preview. Notes come toward the strike line in
 // perspective, in time with the song (the same clock as the lyrics). Under them, the line being sung.
 // Drawn on a canvas each frame; only the notes inside the visible window are touched.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue';
 import { yarg, songTime, shownSong, fetchLanes, LANE, phraseText } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 
@@ -181,7 +181,9 @@ function draw() {
   });
 }
 
-onMounted(() => { raf = requestAnimationFrame(draw); });
+// drawn only while shown (views and panels stay alive in the background, see App.vue / DashView)
+onActivated(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+onDeactivated(() => cancelAnimationFrame(raf));
 onBeforeUnmount(() => { cancelAnimationFrame(raf); clearTimeout(retry); });
 </script>
 

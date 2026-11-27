@@ -9,7 +9,7 @@ A live dashboard for a running [YARG](https://yarg.in) game. Run it on the compu
 - 🎤 **Lyrics** that follow the song, with every harmony part and a pitch guide
 - 🎸 **Tabs**: guitar and bass tablature in time, from the chart's Pro Guitar/Bass or a Guitar Pro file that lines itself up with the song
 - 🛣️ **Lanes**: every part's note highway side by side, made for a screen facing the audience
-- 🎹 **Keys**: the keyboard part falling onto piano keys, from the chart's Pro Keys or a Guitar Pro file's piano, organ or synth
+- 🎹 **Keys**: the keyboard part falling onto piano keys, from the chart's Pro Keys or a Guitar Pro file's piano, organ or synth. Plug in a MIDI keyboard to see what you play, and light-up keyboards light the notes to play
 - 🥁 **Click**: a big beat counter for the drummer
 - 🏆 **Scores**: the band's result after each song, and your best during it
 - 📚 **Library**: browse and search every song, see what's in it and whether its tab lines up
@@ -109,7 +109,7 @@ Windows installers have to be built on Windows: the installer tool doesn't run o
 
 ## 🎶 Using it
 
-The header shows **SRV** (the page is connected to the server) and **YARG** (green: running with the data stream on; yellow: running without it). The dashboard has five views. **Library** lists YARG's songs and **Settings** shows what's connected and walks you through setting up YARG.
+The header shows **SRV** (the page is connected to the server) and **YARG** (green: running with the data stream on; yellow: running without it). The dashboard has five views. **Library** lists YARG's songs and **Settings** (tabs: *General*, *Library*, *Keys & MIDI*) shows what's connected and walks you through setting up YARG. Every view keeps your place: switch to the Library and back, or from the bass tab to the lyrics and back, and it's where you left it (a tab goes back to the top when YARG starts the song again).
 
 ### 🎤 Lyrics
 
@@ -132,6 +132,14 @@ Every part of the song as a note highway, side by side (guitar, rhythm, bass, dr
 The keyboard part falling onto piano keys in time with the song. Each key lights up while its note sounds: right hand teal, left hand purple. The keyboard spans the part's range, with note names on the notes and keys (**Names**) and the chord name when the file has one. 🐢 / 🐇 set the note speed.
 - Songs whose chart has **Pro Keys** (Rock Band 3 songs) have it automatically, with the 17-key window Rock Band shows the player marked as it moves. Rock Band fits Pro Keys into two octaves, so it can sit an octave or more away from the real part.
 - A Guitar Pro file's keyboard parts (piano, organ, synth, clavinet…) show here instead of in the Tab view, lined up with the song the same way as its tabs (and nudged by the same **Bar offset**). Newer `.gp`/`.gpx` files mark keyboards clearly, and their grand staff gives the two hands. In older formats every part has strings, so the instrument sound and track name decide. A part named for a voice, guitar, bass or harmonica stays a tab.
+- ✨ **Effects** where notes reach the keys: Sparks, Flames, Beams, Ripples or Fireworks, with how drastic and which colours (the hands', fire, or a rainbow), and a separate one for when you play the right note. Pick them in *Settings → Keys & MIDI*, which previews them as you choose.
+
+#### 🎹 MIDI keyboard
+
+Plug a MIDI keyboard into the computer showing the Keys view (the yargDash app, or Chrome or Edge: Safari, iPhones and iPads can't use MIDI). It's used by itself on the YARG computer; **🎹 MIDI** on the Keys view turns it on or off.
+- The keys you press show on the screen: amber, or outlined in white in the hand's colour when it's the right note. *Settings → Keys & MIDI* shows the last key it heard, to check a keyboard works.
+- The Keys view shows **your keyboard's keys** (61 by default, or its size picked in Settings, with an octave shift for its octave buttons), so the screen matches where your hands go. Notes it doesn't have are dimmed, and a key you press off the screen is marked at the edge.
+- 💡 **Key lights**: a keyboard with lights in its keys lights the notes to play, a moment before each one (200 ms, adjustable), in any view, even with the window in the background. **The ONE** keyboards (Smart Piano, Piano COLOR, Light Keyboard) are found and lit by themselves. Keyboards that light a key for each note they're sent (Casio's lighted-key models, some Yamaha and others) work too: pick the keyboard and its channel in Settings, and turn that channel down on it, as it may play the notes as well. The lights go off when the song ends. **Lights** on the Keys view turns them off and on, and *Test lights* in Settings runs up a scale.
 
 ### 🥁 Click
 
@@ -148,7 +156,7 @@ Every song in the folders YARG reads (YARG's *Settings → Songs*), with album a
 - its tab: the chart's Pro Guitar/Bass, or its Guitar Pro file and **how well that lines up** with the song (and what was adjusted). **Find tab** (on the YARG computer), **+ Guitar Pro file** and **Remove** work here without playing the song, and a downloaded tab is added to it by itself.
 - the band's best score for it
 
-`.sng` files and song folders with a `song.ini` are listed. Rock Band CON packs aren't. The list is rechecked every 10 minutes, or tap ⟳.
+`.sng` files, song folders with a `song.ini` and Rock Band CON packs (`*_rb3con` and the like, several songs per pack included) are listed. Packs with encrypted audio are left out, as YARG leaves them out. The list is rechecked every 10 minutes, or tap ⟳.
 
 ### 🛒 Get more from Encore
 
@@ -166,7 +174,7 @@ When YARG isn't running, a song in the Library has a ▶️ **Practice** button 
 - 🐢 slow down to 50% (or up to 125%) without changing the pitch
 - 🔇 mute any of the song's stems (Guitar, Bass, Drums, Vocals…) to play that part yourself
 
-Lanes and Click are hidden while practising. Starting YARG ends practice. The audio comes from the song's stems (`song.ogg`, `guitar.opus`… in its folder or `.sng`); encrypted `.mogg` audio can't be played.
+Lanes and Click are hidden while practising. Starting YARG ends practice. The audio comes from the song's stems (`song.ogg`, `guitar.opus`… in its folder or `.sng`). A Rock Band song's audio is one multichannel `.mogg`, which browsers can't play: the first time you practise one, yargDash splits it into a stem per instrument (a few seconds), kept for the last few songs in its data folder.
 
 ### 🎵 Menu music (macOS/Linux)
 
@@ -180,13 +188,14 @@ The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/
 
 ## ⚙️ How it works
 
-`server/server.mjs` is a small Node server (no dependencies except [alphaTab](https://alphatab.net), to read Guitar Pro files). It serves the page and pushes updates to every open page over Server-Sent Events.
+`server/server.mjs` is a small Node server (its only dependencies: [alphaTab](https://alphatab.net), to read Guitar Pro files, and a [Vorbis decoder](https://github.com/eshaz/wasm-audio-decoders), to practise Rock Band songs). It serves the page and pushes updates to every open page over Server-Sent Events.
 
-- 💿 **Song**: YARG writes the song it's playing to `currentSong.json` in its data folder. The server reads everything else straight from the song file (`.sng`, or a folder with `notes.mid` / `notes.chart`): lyrics and vocal notes, sections, the beat grid, every instrument part, and Pro Guitar/Bass.
+- 💿 **Song**: YARG writes the song it's playing to `currentSong.json` in its data folder. The server reads everything else straight from the song file (`.sng`, a folder with `notes.mid` / `notes.chart`, or a Rock Band CON pack): lyrics and vocal notes, sections, the beat grid, every instrument part, and Pro Guitar/Bass.
 - ⏱️ **Timing**: YARG doesn't broadcast its playback position, so the server works it out from the data stream. The clock starts at the chart's first tempo marker, stops while YARG is paused, and lines up with every bar line YARG reports (picking up song speed too). Each page runs the clock locally between updates.
 - 🎵 **Menu music**: the file YARG has open, and when it started (YARG's log).
 - 🛒 **Encore**: the server searches Encore's API and downloads from its file server, and remembers what it downloaded in `encore.json` in the data folder.
 - 🎧 **Practice**: the page on the YARG computer plays the song's stems (served from the song file) and reports where it is; that drives the clock instead of YARG.
+- 🎹 **MIDI keyboards**: the page reads the keyboard with Web MIDI and lights its keys with MIDI messages (for The ONE keyboards, as worked out by [open-one-piano](https://github.com/vhorvath2010/open-one-piano)). Nothing goes through the server.
 - 🏆 **Scores**: YARG's own scores database.
 
 | File | |
@@ -197,6 +206,8 @@ The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/
 | `server/lanes.mjs` | the Lanes view's notes for every part |
 | `server/library.mjs` | the Library: YARG's song folders, each song's details, album art and audio stems (for practice) |
 | `server/encore.mjs` | searching and downloading charts from Chorus Encore |
+| `server/con.mjs` | reading Rock Band CON packs: songs.dta, charts, album art, audio |
+| `server/rbaudio.mjs` | splitting a Rock Band song's multichannel audio into stems for practice |
 | `src/` | the page (Vue 3), built into one self-contained `dist/index.html` |
 | `scripts/start.mjs` | `npm start`: build if needed, start or restart the server |
 | `electron/` | the desktop app: window, tray, updates |

@@ -1,10 +1,12 @@
 <script setup>
 // The Library's Encore side: search Chorus Encore (enchor.us) and download charts into YARG's song folders.
 // Each chart says whether you have it (this exact chart is in the library) or have the song as another chart or version.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { keepScroll } from '../lib/keepScroll.js';
 import { encore, searchEncore, downloadChart, ENCORE_INSTRUMENTS } from '../lib/encore.js';
 import { INSTRUMENTS, ROW_PARTS, TIER, fmtLength } from '../lib/library.js';
 import { yarg } from '../lib/yarg.js';
+import { settings } from '../lib/settings.js';
 import InstIcon from './InstIcon.vue';
 
 const INST = Object.fromEntries(INSTRUMENTS.map((i) => [i.key, i]));
@@ -36,6 +38,10 @@ onMounted(() => {
 // a short first page doesn't fill the list: the sentinel is already in view, so look again after each page
 watch(() => encore.charts.length, () => { if (io && sentinel.value) { io.unobserve(sentinel.value); io.observe(sentinel.value); } }, { flush: 'post' });
 onBeforeUnmount(() => io?.disconnect());
+// it stays alive behind "My songs" (LibraryView): back, the results are where you left them, and the box ready to type in
+const shown = () => settings.libSource === 'encore';
+keepScroll(list, shown);
+watch(shown, (v) => { if (v && !encore.charts.length) nextTick(() => searchEl.value?.focus()); });
 </script>
 
 <template>

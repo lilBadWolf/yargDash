@@ -1,21 +1,25 @@
 // YARG's song library, for the Library view: every song in the folders YARG reads (its settings.json SongFolders),
 // with what's in it (instruments and difficulty, from each song's metadata), whether it has a tab, and YARG's scores.
 //
-//  * Songs: .sng files and folders with a song.ini (Clone Hero / YARG style). Rock Band CON/rb3con packs aren't read.
+//  * Songs: .sng files, folders with a song.ini (Clone Hero / YARG style) and Rock Band packages (CON / rb3con files,
+//    con.mjs; one package can hold several songs). Packages with encrypted audio are left out, as YARG leaves them out.
 //  * Each song's metadata is kept in <data>/library.json by path, size and date, so a rescan only reads new or
 //    changed songs. Rescanned at start, when asked (POST /library/rescan), and every 10 minutes.
 //  * One song in full (GET /library/song?id=): its chart read for the parts it actually has, vocal parts, sections
 //    and tempo, plus its tabs lined up with the chart (tabs.analyze) and its best score.
 //
 //  * Practice (YARG not running): a song's audio stems (song.ogg, guitar.ogg, …, or the same inside an .sng), served
-//    in byte ranges so a page's <audio> can seek in them.
+//    in byte ranges so a page's <audio> can seek in them. A Rock Band song's audio is one multichannel mogg, which
+//    prepare(id) turns into the same kind of stems first (rbaudio.mjs).
 //
 // Exports createLibrary({ dataDir, log, broadcast, yarg, tabs }) ->
-//   { list(), song(id), art(id), meta(id), entries(), folders(), stems(id), stem(id, name), rescan(), close() }
+//   { list(), song(id), art(id), meta(id), entries(), folders(), prepare(id), stems(id), stem(id, name), rescan(), close() }
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { songMetadata, loadLyrics, readSngFiles, listSngFiles, readSngRange } from './yarg.mjs';
+import { isCon, conSongs, conMogg, conArt, conReadRange } from './con.mjs';
+import { createRbAudio } from './rbaudio.mjs';
 
 // Instruments in a song, from its metadata's difficulty tiers (diff_* = -1 when the part isn't charted).
 const PARTS = [
@@ -45,7 +49,11 @@ const STEM_ORDER = ['song', 'guitar', 'rhythm', 'bass', 'drums', 'keys', 'vocals
 const stemRank = (n) => { const i = STEM_ORDER.findIndex((k) => n === k || n.startsWith(`${k}_`)); return i < 0 ? STEM_ORDER.length : i; };
 const AUDIO_TYPE = { ogg: 'audio/ogg', opus: 'audio/ogg; codecs=opus', mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac' };
 
-function entryFrom(loc, st, meta) {
+// files that might be a Rock Band package (they usually have no extension)
+const maybeCon = (name) => !/\.[a-z0-9]{1,5}$/i.test(name) || /\.con$/i.test(name);
+const keyOf = (loc, node) => (node ? `${loc}\0${node}` : loc);
+
+function entryFrom(loc, st, meta, node = null) {
   const parts = {};
   for (const [key, , keys] of PARTS) {
     const v = Math.max(-1, ...keys.map((k) => (meta[k] != null && meta[k] !== '' ? Number(meta[k]) : -1)).filter((n) => Number.isFinite(n)));
@@ -54,7 +62,7 @@ function entryFrom(loc, st, meta) {
   // older charts: pro drums marked with pro_drums = True instead of their own tier
   if (parts.proDrums == null && parts.drums != null && /^true$/i.test(meta.pro_drums || '')) parts.proDrums = parts.drums;
   return {
-    id: idOf(loc), location: loc, size: st.size, mtime: Math.round(st.mtimeMs),
+    id: idOf(keyOf(loc, node)), location: loc, ...(node ? { node } : {}), size: st.size, mtime: Math.round(st.mtimeMs),
     name: strip(meta.name) || path.basename(loc).replace(/\.sng$/i, ''), artist: strip(meta.artist), album: strip(meta.album),
     genre: strip(meta.genre), year: strip(meta.year).replace(/^,\s*/, ''), charter: strip(meta.charter || meta.frets),
     length: (Number(meta.song_length) || 0) / 1000, parts, loading: strip(meta.loading_phrase),
@@ -63,10 +71,12 @@ function entryFrom(loc, st, meta) {
 
 export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
   const cacheFile = path.join(dataDir, 'library.json');
-  let byLoc = new Map();       // location -> entry
-  try { for (const e of JSON.parse(fs.readFileSync(cacheFile, 'utf8')).songs || []) byLoc.set(e.location, e); } catch {}
+  let byLoc = new Map();       // location (+ node, in a package) -> entry
+  try { for (const e of JSON.parse(fs.readFileSync(cacheFile, 'utf8')).songs || []) byLoc.set(keyOf(e.location, e.node), e); } catch {}
   let byId = new Map([...byLoc.values()].map((e) => [e.id, e]));
   let folders = [], scanning = null, scannedAt = 0, version = 0, lastError = '';
+  const rbAudio = createRbAudio({ dataDir, log });
+  const locked = new Map(); // package -> 'size mtime' of a package with no playable songs (not read again until it changes)
 
   // the song folders YARG reads, from its settings.json
   function songFolders() {
@@ -83,6 +93,7 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       if (d.name.startsWith('.')) continue;
       const full = path.join(root, d.name);
       if (d.isFile() && /\.sng$/i.test(d.name)) found.push(full);
+      else if (d.isFile() && maybeCon(d.name) && isCon(full)) found.push(full);
       else if ((d.isDirectory() || d.isSymbolicLink()) && depth < 12) await walk(full, found, depth + 1);
     }
   }
@@ -93,12 +104,32 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
     for (const f of folders) await walk(f, found);
     const next = new Map();
     let read = 0;
+    // a package's songs, by package (to reuse them all when it hasn't changed)
+    const inPkg = new Map();
+    for (const e of byLoc.values()) if (e.node) inPkg.set(e.location, [...(inPkg.get(e.location) || []), e]);
     for (const loc of found) {
       try {
-        const statPath = /\.sng$/i.test(loc) ? loc : path.join(loc, 'song.ini');
-        const st = await fs.promises.stat(statPath);
+        const file = /\.sng$/i.test(loc) || !(await fs.promises.stat(loc)).isDirectory();
+        const st = await fs.promises.stat(file ? loc : path.join(loc, 'song.ini'));
+        const same = (e) => e && e.size === st.size && e.mtime === Math.round(st.mtimeMs);
+        if (file && !/\.sng$/i.test(loc)) {
+          const old = inPkg.get(loc);
+          if (old && same(old[0])) { for (const e of old) next.set(keyOf(loc, e.node), e); continue; }
+          const stamp = `${st.size} ${Math.round(st.mtimeMs)}`;
+          if (locked.get(loc) === stamp) continue;
+          let skipped = 0, kept = 0;
+          for (const s of conSongs(loc)) {
+            if (!s.files.mogg || !conMogg(loc, s.files.mogg)) { skipped++; continue; } // encrypted: YARG can't play it either
+            next.set(keyOf(loc, s.node), entryFrom(loc, st, s.meta, s.node));
+            kept++;
+          }
+          if (skipped) log(`Library: ${path.basename(loc)}: ${skipped} song${skipped === 1 ? '' : 's'} with encrypted audio left out (YARG can't play ${skipped === 1 ? 'it' : 'them'})`);
+          if (!kept) locked.set(loc, stamp);
+          read++;
+          continue;
+        }
         const old = byLoc.get(loc);
-        if (old && old.size === st.size && old.mtime === Math.round(st.mtimeMs)) { next.set(loc, old); continue; }
+        if (same(old)) { next.set(loc, old); continue; }
         next.set(loc, entryFrom(loc, st, songMetadata(loc)));
         if (++read % 200 === 0) await new Promise((r) => setImmediate(r)); // stay responsive on big libraries
       } catch (e) { log(`Library: skipped ${loc}: ${e.message}`); }
@@ -157,7 +188,7 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       const out = { ...e, file: path.basename(e.location), folder: path.dirname(e.location), partNames: PART_NAMES, chart: null, chartError: '', tabs: null, best: null };
       let chart = null;
       try {
-        chart = loadLyrics(e.location);
+        chart = loadLyrics(e.location, { node: e.node });
         const lanes = Object.fromEntries(Object.entries(chart.lanes || {}).map(([k, v]) => [k, { name: v.name, notes: v.notes?.length || 0 }]));
         const beats = chart.beats || [];
         const bars = beats.filter(([, k]) => k === 0).map(([t]) => t);
@@ -174,7 +205,7 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       } catch (err) { out.chartError = err.message; }
       try { out.tabs = await tabs.analyze({ name: e.name, artist: e.artist }, chart); } catch (err) { out.tabs = { error: err.message, tracks: [] }; }
       out.best = yarg.bestFor(e.name, e.artist);
-      delete out.location;
+      delete out.location; delete out.node;
       return out;
     },
     // album art: { type, data } or null
@@ -182,7 +213,10 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       const e = byId.get(id);
       if (!e) return null;
       try {
-        if (/\.sng$/i.test(e.location)) {
+        if (e.node) {
+          const s = conSongs(e.location).find((x) => x.node === e.node);
+          if (s?.files.art) return { type: 'image/png', data: conArt(e.location, s.files.art) };
+        } else if (/\.sng$/i.test(e.location)) {
           const files = readSngFiles(e.location, ART);
           for (const n of ART) if (files.get(n)) return { type: n.endsWith('png') ? 'image/png' : 'image/jpeg', data: files.get(n) };
         } else {
@@ -193,21 +227,37 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       } catch {}
       return null;
     },
+    // Get a song's stems ready (a Rock Band song's are decoded from its mogg, the first time)
+    async prepare(id) {
+      const e = byId.get(id);
+      if (!e?.node) return;
+      const s = conSongs(e.location).find((x) => x.node === e.node);
+      const ogg = s?.files.mogg && conMogg(e.location, s.files.mogg);
+      if (!ogg) throw new Error('This song\'s audio is encrypted');
+      await rbAudio.prepare(e.id, { size: ogg.size, read: async (a, b) => conReadRange(e.location, s.files.mogg, ogg.start + a, ogg.start + b),
+        tracks: s.tracks, channels: s.channels, pans: s.pans, vols: s.vols });
+    },
     // A song's audio stems and chart offset, for practice: { stems: [{ name, size }], delay (s: audio time of chart time 0) }
     stems(id) {
       const e = byId.get(id);
       if (!e) return null;
       let files = [];
+      let dir = e.location;
+      if (e.node) {
+        // a Rock Band song: the stems prepare() made (none yet: not prepared)
+        dir = rbAudio.dirOf(e.id);
+        if (!dir) return { stems: [], delay: 0 };
+      }
       if (/\.sng$/i.test(e.location)) files = listSngFiles(e.location).map((f) => ({ name: f.name, size: f.len }));
       else {
-        for (const f of fs.readdirSync(e.location)) {
-          try { files.push({ name: f, size: fs.statSync(path.join(e.location, f)).size }); } catch {}
+        for (const f of fs.readdirSync(dir)) {
+          try { files.push({ name: f, size: fs.statSync(path.join(dir, f)).size }); } catch {}
         }
       }
       const base = (n) => n.toLowerCase().replace(AUDIO, '');
       const stems = files.filter((f) => AUDIO.test(f.name) && !['preview', 'crowd'].includes(base(f.name)) && f.size > 0)
         .sort((a, b) => stemRank(base(a.name)) - stemRank(base(b.name)) || a.name.localeCompare(b.name));
-      const delay = (Number(songMetadata(e.location).delay) || 0) / 1000;
+      const delay = e.node ? 0 : (Number(songMetadata(e.location).delay) || 0) / 1000;
       return { stems, delay };
     },
     // One stem: { size, type, read(start, end) -> Promise<Buffer | ReadStream> } or null
@@ -217,7 +267,7 @@ export function createLibrary({ dataDir, log, broadcast, yarg, tabs }) {
       if (!st) return null;
       const type = AUDIO_TYPE[name.split('.').pop().toLowerCase()] || 'application/octet-stream';
       if (/\.sng$/i.test(e.location)) return { size: st.size, type, read: (start, end) => readSngRange(e.location, name, start, end) };
-      const file = path.join(e.location, name);
+      const file = path.join(e.node ? rbAudio.dirOf(e.id) : e.location, name);
       return { size: st.size, type, read: (start, end) => fs.createReadStream(file, { start, end }) };
     },
     close() { clearInterval(timer); },

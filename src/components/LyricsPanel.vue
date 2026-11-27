@@ -2,7 +2,8 @@
 // Teleprompter for YARG lyrics: every line of the song, the current one big and centred, syllables lighting up
 // as they're sung, and a countdown bar before each entry after a long gap. Follows the song when YARG's data
 // stream is on; otherwise it's a plain scrollable lyric sheet.
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onActivated, onDeactivated } from 'vue';
+import { keepScroll } from '../lib/keepScroll.js';
 import { yarg, songTime, synced, phraseText } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
 
@@ -70,8 +71,15 @@ watch(() => [yarg.lyrics, props.part], () => { cur.value = -1; userScrollUntil =
 // the user scrolled by hand: stop following for a few seconds
 const pauseFollow = () => { userScrollUntil = performance.now() + 4000; };
 
-onMounted(() => { raf = requestAnimationFrame(tick); nextTick(() => center(false)); });
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+// while hidden (views stay alive, see App.vue / DashView) nothing runs; back, it's where you left it, and follows
+// the song again if it's playing
+let first = true;
+keepScroll(scroller);
+onActivated(() => {
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+  if (first) { first = false; nextTick(() => center(false)); }
+});
+onDeactivated(() => cancelAnimationFrame(raf));
 
 const following = computed(() => synced() && cur.value >= 0);
 </script>

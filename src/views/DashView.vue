@@ -13,6 +13,7 @@ import SegPick from '../components/SegPick.vue';
 import StartYarg from '../components/StartYarg.vue';
 import PracticeBar from '../components/PracticeBar.vue';
 import { practice } from '../lib/practice.js';
+import { midi } from '../lib/midi.js';
 import { conn } from '../lib/conn.js';
 import { yarg, songTime, synced, fmtTime, partKeys, partKey, PART_LABELS, sectionIndexAt, STAR_LABEL, shownSong, confirmMenu, tabTrackId, keysTracks, keysTrackId, uploadTab, findTab, setTabOffset, removeTab, setTabTuning, TUNINGS, tuningName, tuningNotes } from '../lib/yarg.js';
 import { settings } from '../lib/settings.js';
@@ -102,6 +103,10 @@ function pickKeys(t) {
   if (route.tabTrack) { location.hash = `#keys/${t.id}`; return; }
   settings.keysTrack = t.id;
 }
+const useMidi = computed(() => settings.keysMidi ?? yarg.local);
+const midiTitle = computed(() => (midi.status === 'denied' ? `MIDI isn't allowed in this browser (${midi.error})`
+  : !useMidi.value ? 'Show the keys you press on a MIDI keyboard plugged into this device'
+  : midi.inputs.length ? `Listening to ${midi.inputs.join(', ')}` : 'No MIDI keyboard found: plug one in'));
 const keysSpeed = (d) => { settings.keysSpeed = Math.round(Math.min(3, Math.max(0.4, (settings.keysSpeed || 1) + d)) * 10) / 10; };
 // the Guitar Pro track whose placement the bar offset controls (tab or keys)
 const gpShown = computed(() => (mode.value === 'tab' ? tabTrack.value : mode.value === 'keys' ? keysTrack.value : null)?.source === 'gp');
@@ -119,8 +124,17 @@ async function onFindTab() {
   try { await findTab(); tabMsg.value = 'Opened Ultimate Guitar in the browser. Download a Guitar Pro file there and it’s added to this song by itself.'; } catch (err) { tabMsg.value = err.message; }
 }
 // Lanes: which parts this device shows, and note speed
-const lanesRef = ref(null);
-const laneParts = computed(() => lanesRef.value?.available || []);
+const panelRef = ref(null);
+// the panel showing (null: an empty state instead)
+const panel = computed(() => {
+  const m = mode.value;
+  if (m === 'click') return { is: ClickPanel, key: 'click', props: {} };
+  if (m === 'lanes') return { is: LanesPanel, key: 'lanes', props: {} };
+  if (m === 'keys') return keysTrack.value ? { is: KeysPanel, key: `keys:${keysTrack.value.id}`, props: { trackId: keysTrack.value.id } } : null;
+  if (m === 'tab') return tabTrack.value ? { is: TabPanel, key: `tab:${tabTrack.value.id}`, props: { trackId: tabTrack.value.id } } : null;
+  return part.value || yarg.lyrics?.error ? { is: LyricsPanel, key: 'lyrics', props: { big: stage.value, part: part.value || 'vocals' } } : null;
+});
+const laneParts = computed(() => (mode.value === 'lanes' && panelRef.value?.available) || []);
 const LANE_LABEL = { guitar: 'Guitar', rhythm: 'Rhythm', bass: 'Bass', drums: 'Drums', keys: 'Keys' };
 function toggleLane(k) {
   const h = settings.lanesHidden;
@@ -222,6 +236,10 @@ function share() {
       <template v-if="mode === 'keys' && cur">
         <SegPick v-if="keyTracks.length > 1" ref="trackPick" :options="opts(keyTracks)" :model-value="keysId" :compact="compact.track" label="Part" @update:model-value="(id) => pickKeys(keyTracks.find((t) => t.id === id))" />
         <button v-if="keysTrack" class="chip" :class="{ on: settings.keysNames }" title="Note names on the notes and keys" @click="settings.keysNames = !settings.keysNames">Names</button>
+        <button v-if="keysTrack && !stage && midi.status !== 'unsupported'" class="chip" :class="{ on: useMidi && midi.inputs.length }" :title="midiTitle" @click="settings.keysMidi = !useMidi">
+          🎹 MIDI{{ useMidi && midi.status === 'ready' && !midi.inputs.length ? ' · none' : '' }}
+        </button>
+        <button v-if="keysTrack && !stage && useMidi && midi.lights" class="chip" :class="{ on: settings.keysLights }" :title="`Light the keys on ${midi.lights} as the notes are due`" @click="settings.keysLights = !settings.keysLights">Lights</button>
       </template>
       <template v-if="(mode === 'tab' || mode === 'keys') && cur">
         <template v-if="mode === 'tab'">
@@ -274,11 +292,13 @@ function share() {
         <span class="m">· {{ ago(last.date) }}</span>
       </div>
       <template v-if="cur && yarg.lyrics">
-        <ClickPanel v-if="mode === 'click'" />
-        <LanesPanel v-else-if="mode === 'lanes'" ref="lanesRef" />
-        <template v-else-if="mode === 'keys'">
-          <KeysPanel v-if="keysTrack" :key="keysTrack.id" :track-id="keysTrack.id" />
-          <div v-else class="empty">
+        <PitchGuide v-if="mode === 'lyrics' && settings.pitchGuide && hasNotes && part" :part="part" />
+        <!-- the views stay alive while another shows (and each tab/keys part apart): switching back finds it as you left it -->
+        <KeepAlive :max="8">
+          <component :is="panel.is" v-if="panel" ref="panelRef" :key="panel.key" v-bind="panel.props" />
+        </KeepAlive>
+        <template v-if="!panel && mode === 'keys'">
+          <div class="empty">
             <p>No keyboard part for this song.</p>
             <p class="small">Songs with Pro Keys in the chart have one automatically. So does a Guitar Pro file with a piano, organ or synth part{{ stage || !yarg.local ? ' (added on the YARG computer)' : '' }}: it lines up with the song by itself.</p>
             <div v-if="!stage && yarg.local" class="find">
@@ -288,8 +308,7 @@ function share() {
           </div>
         </template>
         <template v-else-if="mode === 'tab'">
-          <TabPanel v-if="tabTrack" :key="tabTrack.id" :track-id="tabTrack.id" />
-          <div v-else class="empty">
+          <div class="empty">
             <p>No tab for this song.</p>
             <p class="small">Songs with Pro Guitar/Bass in the chart have one automatically. For others, add a Guitar Pro file (.gp, .gpx, .gp5, .gp4, .gp3){{ stage || !yarg.local ? ' on the YARG computer' : '' }}: it lines up with the song's bars by itself.</p>
             <div v-if="!stage && yarg.local" class="find">
@@ -298,11 +317,7 @@ function share() {
             </div>
           </div>
         </template>
-        <template v-else>
-          <PitchGuide v-if="settings.pitchGuide && hasNotes && part" :part="part" />
-          <LyricsPanel v-if="part || yarg.lyrics.error" :big="stage" :part="part || 'vocals'" />
-          <div v-else class="empty"><p>This song has no vocals.</p></div>
-        </template>
+        <div v-else-if="mode === 'lyrics'" class="empty"><p>This song has no vocals.</p></div>
       </template>
       <div v-else class="empty">
         <div v-if="last && !stage" class="result">

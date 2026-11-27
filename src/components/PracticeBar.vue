@@ -1,7 +1,7 @@
 <script setup>
 // The practice transport (only on the page playing the audio, see lib/practice.js): play/pause, seek, jump to and
 // loop a section, slow down, mute stems (e.g. your own part), stop. Space plays/pauses, ← → skip 5 s.
-import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { computed, onActivated, onDeactivated } from 'vue';
 import { practice, toggle, seek, setSpeed, toggleStem, loopSection, stopPractice } from '../lib/practice.js';
 import { yarg, fmtTime, sectionIndexAt } from '../lib/yarg.js';
 
@@ -22,8 +22,9 @@ function onKey(e) {
   else if (e.code === 'ArrowLeft') { e.preventDefault(); seek(practice.t - 5); }
   else if (e.code === 'ArrowRight') { e.preventDefault(); seek(practice.t + 5); }
 }
-onMounted(() => window.addEventListener('keydown', onKey));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+// only while the dashboard is showing (it stays alive behind the Library: Space there isn't for us)
+onActivated(() => window.addEventListener('keydown', onKey));
+onDeactivated(() => window.removeEventListener('keydown', onKey));
 </script>
 
 <template>
