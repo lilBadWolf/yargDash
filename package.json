@@ -1,7 +1,7 @@
 {
   "name": "yargdash",
   "productName": "yargDash",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A live dashboard for a running YARG game: lyrics with harmonies and a pitch guide, Guitar Pro tabs in time, every part's note lanes, a click for the drummer, and scores, on any phone or screen on the network.",
   "type": "module",
   "main": "electron/main.mjs",

@@ -1,27 +1,24 @@
-## 🎸 yargDash 1.3.0
+## 🎸 yargDash 1.4.0
 
-Practise without YARG, and grow your library without leaving yargDash 🎧🛒
+Plug in a keyboard and play along, with Rock Band songs in your library too 🎹💿
 
 ### 🆕 What's new
 
-- 🎧 **Practice mode**: with YARG closed, open a song in the Library and press **Practice**. yargDash plays the song's own audio on the YARG computer, and the Tab, Keys and Lyrics views follow it, on every phone too. The Dashboard gets a transport bar:
-  - ⏯️ play/pause and seek (`Space` plays/pauses, `←` `→` skip 5 s)
-  - 🔁 jump to a section, or loop it
-  - 🐢 slow down to 50% (or up to 125%) without changing the pitch
-  - 🔇 mute any part of the song (Guitar, Bass, Drums, Vocals…) to play it yourself
-- 🛒 **Get more from Encore**: the Library can search [Chorus Encore](https://www.enchor.us) and download charts straight into YARG's song folder.
-  - Search anything, or by **Artist**; more results load as you scroll
-  - ✅ **Downloaded** marks charts you already have (from yargDash or the Encore website), 🔁 **In library** marks songs you have as another chart or version
-  - Downloads run one at a time with progress, and show up in the Library by themselves. Rescan songs in YARG to play them there.
-  - *Settings → Encore downloads* shows where they go.
+- 🎹 **MIDI keyboards**: plug a keyboard into the YARG computer and the Keys view shows what you play: amber, or outlined in white when it's the right note.
+  - The Keys view lays out **your keyboard's keys** (pick its size and octave in *Settings*), so the screen matches where your hands go.
+  - 💡 **Key lights**: **The ONE** keyboards (Smart Piano, Piano COLOR, Light Keyboard) light the notes to play a moment before each one, in any view, even with yargDash in the background. Keyboards that light a key for each note they're sent (Casio's lighted-key models and others) work too.
+- ✨ **Keys effects**: Sparks, Flames, Beams, Ripples or Fireworks where notes land and when you hit the right note, from subtle to wild, in the hands' colours, fire or a rainbow. Previewed live in *Settings → Keys & MIDI*.
+- 💿 **Rock Band songs**: CON / rb3con packs in YARG's song folders now show in the Library with their parts and album art, their charts, Pro Keys and Pro Guitar/Bass tabs work everywhere, and you can **practise** them (each instrument muteable).
+- 📍 **Every view keeps your place**: switch to the Library and back, or from the bass tab to the lyrics and back, and it's where you left it. A tab goes back to the top when YARG restarts the song.
+- ⚙️ **Settings in tabs**: General, Library, and Keys & MIDI.
 
 ### ⬇️ Download
 
 | | |
 |---|---|
-| 🍎 macOS, Apple Silicon | `yargDash-1.3.0-mac-arm64.dmg` |
-| 🍏 macOS, Intel | `yargDash-1.3.0-mac-x64.dmg` |
-| 🪟 Windows | `yargDash-Setup-1.3.0.exe` |
+| 🍎 macOS, Apple Silicon | `yargDash-1.4.0-mac-arm64.dmg` |
+| 🍏 macOS, Intel | `yargDash-1.4.0-mac-x64.dmg` |
+| 🪟 Windows | `yargDash-Setup-1.4.0.exe` |
 | 🐧 Linux | `.AppImage` (updates itself) or `.deb` |
 
 Windows and Linux (AppImage) update themselves. On macOS, install the new version over the old one; your tabs and settings stay.
