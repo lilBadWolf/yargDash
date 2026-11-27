@@ -1,24 +1,22 @@
-## 🎸 yargDash 1.4.0
+## 🎸 yargDash 1.4.1
 
-Plug in a keyboard and play along, with Rock Band songs in your library too 🎹💿
+Phones find yargDash on Windows 🪟📱
 
-### 🆕 What's new
+### 🛠️ Fixed
 
-- 🎹 **MIDI keyboards**: plug a keyboard into the YARG computer and the Keys view shows what you play: amber, or outlined in white when it's the right note.
-  - The Keys view lays out **your keyboard's keys** (pick its size and octave in *Settings*), so the screen matches where your hands go.
-  - 💡 **Key lights**: **The ONE** keyboards (Smart Piano, Piano COLOR, Light Keyboard) light the notes to play a moment before each one, in any view, even with yargDash in the background. Keyboards that light a key for each note they're sent (Casio's lighted-key models and others) work too.
-- ✨ **Keys effects**: Sparks, Flames, Beams, Ripples or Fireworks where notes land and when you hit the right note, from subtle to wild, in the hands' colours, fire or a rainbow. Previewed live in *Settings → Keys & MIDI*.
-- 💿 **Rock Band songs**: CON / rb3con packs in YARG's song folders now show in the Library with their parts and album art, their charts, Pro Keys and Pro Guitar/Bass tabs work everywhere, and you can **practise** them (each instrument muteable).
-- 📍 **Every view keeps your place**: switch to the Library and back, or from the bass tab to the lyrics and back, and it's where you left it. A tab goes back to the top when YARG restarts the song.
-- ⚙️ **Settings in tabs**: General, Library, and Keys & MIDI.
+- 🪟 **Windows: phones and tablets can reach yargDash.** The installer now lets yargDash through Windows Firewall on private networks (Windows asks for permission once; updates don't ask again, and uninstalling removes the rule). It also clears a "Block" left behind if Windows' own "allow access?" prompt was dismissed. Still can't connect? Make sure Windows has your network set to *Private*, not *Public* (*Settings → Network & internet → your network*).
+
+### 🎹 New in 1.4
+
+MIDI keyboards with key lights (The ONE keyboards and others), Keys effects, Rock Band (CON) songs in the Library and in practice, every view keeping your place, and Settings in tabs. See the [1.4.0 release](https://github.com/lilBadWolf/yargDash/releases/tag/v1.4.0).
 
 ### ⬇️ Download
 
 | | |
 |---|---|
-| 🍎 macOS, Apple Silicon | `yargDash-1.4.0-mac-arm64.dmg` |
-| 🍏 macOS, Intel | `yargDash-1.4.0-mac-x64.dmg` |
-| 🪟 Windows | `yargDash-Setup-1.4.0.exe` |
+| 🍎 macOS, Apple Silicon | `yargDash-1.4.1-mac-arm64.dmg` |
+| 🍏 macOS, Intel | `yargDash-1.4.1-mac-x64.dmg` |
+| 🪟 Windows | `yargDash-Setup-1.4.1.exe` |
 | 🐧 Linux | `.AppImage` (updates itself) or `.deb` |
 
 Windows and Linux (AppImage) update themselves. On macOS, install the new version over the old one; your tabs and settings stay.
