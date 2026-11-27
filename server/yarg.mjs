@@ -1,7 +1,7 @@
 // YARG integration for the yargDash server: what song is playing, its lyrics, and where we are in it.
 //
 //  * Song:   YARG writes the song it's playing to <YARG data>/currentSong.json (blank outside gameplay).
-//            Its ActualLocation points at the song folder, .sng file or Rock Band package (con.mjs; the song in it
+//            Its ActualLocation points at the song folder, .sng file or Rock Band package (rbcon.mjs; the song in it
 //            is picked by name), which we read the lyrics from.
 //  * Clock:  YARG's "UDP Data Stream" (Settings > All Settings > Experimental) broadcasts game state
 //            ~88x/s on port 36107. It has no song position, but it does carry the pause state, the BPM
@@ -27,7 +27,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { midiLanes, chartLanes } from './lanes.mjs';
-import { isCon, conSongs, conRead } from './con.mjs';
+import { isCon, conSongs, conRead } from './rbcon.mjs';
 
 export const YARG_UDP_PORT = Number(process.env.LC_YARG_PORT) || 36107; // env override: for testing next to a running YARG
 
@@ -467,7 +467,7 @@ export function loadLyrics(location, which = {}) {
   return out;
 }
 
-// A Rock Band package (con.mjs) is a file that isn't an .sng
+// A Rock Band package (rbcon.mjs) is a file that isn't an .sng
 export function isConFile(location) {
   if (/\.sng$/i.test(location)) return false;
   try { return fs.statSync(location).isFile() && isCon(location); } catch { return false; }

@@ -206,7 +206,7 @@ The QR button makes them: `#stage` lyrics, `#stage/harm2` a harmony part, `#tab/
 | `server/lanes.mjs` | the Lanes view's notes for every part |
 | `server/library.mjs` | the Library: YARG's song folders, each song's details, album art and audio stems (for practice) |
 | `server/encore.mjs` | searching and downloading charts from Chorus Encore |
-| `server/con.mjs` | reading Rock Band CON packs: songs.dta, charts, album art, audio |
+| `server/rbcon.mjs` | reading Rock Band CON packs: songs.dta, charts, album art, audio |
 | `server/rbaudio.mjs` | splitting a Rock Band song's multichannel audio into stems for practice |
 | `src/` | the page (Vue 3), built into one self-contained `dist/index.html` |
 | `scripts/start.mjs` | `npm start`: build if needed, start or restart the server |

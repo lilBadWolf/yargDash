@@ -2,7 +2,7 @@
 // with what's in it (instruments and difficulty, from each song's metadata), whether it has a tab, and YARG's scores.
 //
 //  * Songs: .sng files, folders with a song.ini (Clone Hero / YARG style) and Rock Band packages (CON / rb3con files,
-//    con.mjs; one package can hold several songs). Packages with encrypted audio are left out, as YARG leaves them out.
+//    rbcon.mjs; one package can hold several songs). Packages with encrypted audio are left out, as YARG leaves them out.
 //  * Each song's metadata is kept in <data>/library.json by path, size and date, so a rescan only reads new or
 //    changed songs. Rescanned at start, when asked (POST /library/rescan), and every 10 minutes.
 //  * One song in full (GET /library/song?id=): its chart read for the parts it actually has, vocal parts, sections
@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { songMetadata, loadLyrics, readSngFiles, listSngFiles, readSngRange } from './yarg.mjs';
-import { isCon, conSongs, conMogg, conArt, conReadRange } from './con.mjs';
+import { isCon, conSongs, conMogg, conArt, conReadRange } from './rbcon.mjs';
 import { createRbAudio } from './rbaudio.mjs';
 
 // Instruments in a song, from its metadata's difficulty tiers (diff_* = -1 when the part isn't charted).
