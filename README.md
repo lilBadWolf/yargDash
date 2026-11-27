@@ -222,6 +222,7 @@ Several programs can follow YARG at once (the data stream is a broadcast), so ya
 - 🔴 **SRV red**: the server isn't running or the page can't reach it. Run `npm start` on the YARG computer and check `data/yargdash.log`.
 - 🟡 **YARG yellow / "Lyrics aren't following the song"**: the data stream is off in YARG. If *Settings* says macOS is blocking it, use ▶️ **Restart YARG with the fix** there.
 - 🚧 **"Port 8900 is in use"**: another program uses it. `npm start -- --port 8901`.
+- 🎹 **A MIDI keyboard's keys don't show** (*Settings → Keys & MIDI* never shows a *Last key*): turn the keyboard off and on. A keyboard's USB MIDI can stop sending until it's restarted.
 - 📵 **Phones can't open the QR link**: they must be on the same network as the YARG computer. Set the address in *Settings → Phones & screens* if the auto-detected one is wrong (e.g. a VPN interface).
 - 📡 **YARG yellow in the app on a Mac, though the stream is on**: macOS is keeping the app off the local network. Turn on **yargDash** in *System Settings → Privacy & Security → Local Network* and reopen it. Or tick *Send YARG's stream to this Mac only* in *Settings → Connect YARG* and restart YARG from there: the stream then stays on this Mac and needs no permission (but only one program on this Mac can receive it).
 - 🔍 **Find tab doesn't pick up the download**: the file must land in *Downloads* and its title (or file name) must match the song. The first time, macOS may ask whether Node can use the Downloads folder: allow it. Or add the file with **+ Guitar Pro file**.

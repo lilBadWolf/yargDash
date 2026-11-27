@@ -31,6 +31,7 @@ const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A�
 export const noteName = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 function onMessage(e) {
   const [st, a, b] = e.data;
+  if (st >= 0xf8) return; // clock ticks, "still here" pings…: many a second, nothing to do with keys
   const kind = st & 0xf0;
   midi.count++;
   if (kind === 0x90 && b > 0) { held.set(a, { at: performance.now(), vel: b }); midi.last = { from: e.target?.name || '', note: a, vel: b }; }
@@ -107,7 +108,17 @@ export function keyboardRange() {
 
 // ---------- lights ----------
 const lit = new Map(); // note -> colour sent
-function send(msg) { try { lightOut()?.send(msg); } catch {} }
+// Messages go out paced, at most one every PACE ms: a small keyboard's USB MIDI can lock up when it gets a burst
+// (until it's turned off and on). Usually there's no wait: lights change a few keys at a time.
+const PACE = 1.5;
+let nextAt = 0;
+function send(msg) {
+  const out = lightOut();
+  if (!out) return;
+  const now = performance.now();
+  nextAt = Math.max(now, nextAt + PACE);
+  try { out.send(msg, nextAt > now + 0.5 ? nextAt : undefined); } catch {}
+}
 const ch = () => (Math.min(16, Math.max(1, Number(settings.lightsChannel) || 1)) - 1);
 function on(n, c) {
   if (midi.proto === 'one') send([0xa2, n - 21, c]);
@@ -120,7 +131,9 @@ function off(n) {
 // every light off: each key we lit (sweep: every key there is, to be sure: a song ended, the page is going away).
 // (The ONE's "all lights off" SysEx alone isn't enough: it can be ignored until the keyboard's had a session started.)
 export function allOff(sweep = false) {
-  const keys = sweep ? Array.from({ length: 88 }, (_, i) => i + 21) : [...lit.keys()];
+  // a sweep: the keys the keyboard has (keyboardRange), and any lit outside it
+  const kr = keyboardRange() || [21, 108];
+  const keys = sweep ? [...new Set([...Array.from({ length: kr[1] - kr[0] + 1 }, (_, i) => i + kr[0]), ...lit.keys()])] : [...lit.keys()];
   for (const n of keys) off(n);
   if (midi.proto === 'one' && sysex) send([0xf0, 0x00, 0x20, 0x2b, 0x69, 0x16, 0x02, 0x00, 0xf7]);
   if (midi.proto === 'notes') send([0xb0 | ch(), 123, 0]);

@@ -271,7 +271,7 @@ const confirmReset = () => { if (confirm('Reset this device’s settings (text s
                 </select>
               </label>
               <p v-if="!midi.allInputs.length" class="hint warn">No MIDI keyboard found. Plug one in: it shows up here by itself.</p>
-              <p v-else class="hint" :class="{ ok: midi.last }">{{ midi.last ? `Last key: ${noteName(midi.last.note)} from ${midi.last.from} (velocity ${midi.last.vel})` : `Press a key to check it's heard${midi.count ? ` (${midi.count} other MIDI messages so far)` : ''}.` }}</p>
+              <p v-else class="hint" :class="{ ok: midi.last }">{{ midi.last ? `Last key: ${noteName(midi.last.note)} from ${midi.last.from} (velocity ${midi.last.vel})` : `Press a key to check it's heard${midi.count ? ` (${midi.count} other MIDI messages so far)` : ''}. Nothing? Turn the keyboard off and on.` }}</p>
               <label class="toggle"><input v-model="settings.keysMatch" type="checkbox" />
                 <span><b>Show your keyboard's keys in the Keys view</b><span class="hint">All its keys, laid out like the real thing, so you can see where your hands go. Notes it doesn't have are dimmed.</span></span></label>
               <div class="field">
